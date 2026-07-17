@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# local hybrid JSON database (auto-seeded at runtime)
+/data/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

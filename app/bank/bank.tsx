@@ -1,29 +1,36 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { User } from "@/lib/types";
 import { MaybankChrome } from "../components/maybank/MaybankChrome";
 import { AdCarousel } from "../components/maybank/AdCarousel";
 import { QuickActions, CardVisual, SpendingInsights } from "../components/maybank/BankModules";
 
-type Txn = {
-  date: string;
-  description: string;
-  amount: string;
-  type: "debit" | "credit";
-};
+const USER_ID = "u_danial";
 
-const TRANSACTIONS: Txn[] = [
-  { date: "16 Jul 2026", description: "Sales Debit Gucci Pavilion", amount: "RM 7,500.90", type: "debit" },
-  { date: "14 Jul 2026", description: "Sales Tax Refund", amount: "RM 175.90", type: "credit" },
-  { date: "10 Jul 2026", description: "Salary Credit — Titan Corp", amount: "RM 12,400.00", type: "credit" },
-  { date: "07 Jul 2026", description: "DuitNow Transfer to Jonathan Lim", amount: "RM 1,250.00", type: "debit" },
-  { date: "03 Jul 2026", description: "TNB Bill Payment", amount: "RM 264.30", type: "debit" },
-  { date: "28 Jun 2026", description: "Dividend Credit — ASNB", amount: "RM 640.15", type: "credit" },
-];
+const rm = (n: number) => `RM ${n.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function BankPage() {
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/users/${USER_ID}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((u) => {
+        if (u && !u.error) setUser(u);
+      })
+      .catch(() => {});
+  }, []);
+
+  const txns = user?.transactions ?? [];
+  const moneyIn = txns.filter((t) => t.type === "credit").reduce((a, t) => a + t.amount, 0);
+  const moneyOut = txns.filter((t) => t.type === "debit").reduce((a, t) => a + t.amount, 0);
+
   return (
     <MaybankChrome
       hero={
         <div className="pt-[clamp(14px,2.4vh,24px)] pb-[clamp(18px,2.8vh,30px)]">
-          <h1 className="mb-h1 text-[#1e2129]">Hello Danial Ariff</h1>
+          <h1 className="mb-h1 text-[#1e2129]">Hello {user?.name ?? "Danial Ariff"}</h1>
           <p className="mb-sub mt-[clamp(4px,1vh,8px)] text-[#5a4a1c]">
             Your last login was on Friday, 17 Jul 2026 at 11:28 pm
           </p>
@@ -41,11 +48,13 @@ export default function BankPage() {
                 <p className="mb-body text-[#6b7280]">Available Balance</p>
                 <p className="mb-small tracking-[0.5px] text-[#a2a8b0]">Savings · 7348</p>
               </div>
-              <p className="mb-balance mt-[clamp(6px,1.2vh,10px)] text-[#22a03f]">RM 89,187.90</p>
+              <p className="mb-balance mt-[clamp(6px,1.2vh,10px)] text-[#22a03f]">
+                {user ? rm(user.balance) : "RM ——"}
+              </p>
 
               <div className="mt-[clamp(12px,2vh,16px)] grid grid-cols-2 gap-[clamp(10px,1.5vw,16px)] border-t border-[#eef0f3] pt-[clamp(12px,2vh,16px)]">
-                <MoneyStat direction="in" label="Money in · 30d" amount="+ RM 13,216.05" />
-                <MoneyStat direction="out" label="Money out · 30d" amount="− RM 9,281.10" />
+                <MoneyStat direction="in" label="Money in · 30d" amount={`+ ${rm(moneyIn)}`} />
+                <MoneyStat direction="out" label="Money out · 30d" amount={`− ${rm(moneyOut)}`} />
               </div>
             </div>
 
@@ -78,8 +87,8 @@ export default function BankPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {TRANSACTIONS.map((txn) => (
-                      <tr key={txn.date + txn.description} className="border-b border-[#eef0f3]">
+                    {txns.map((txn) => (
+                      <tr key={txn.id} className="border-b border-[#eef0f3]">
                         <td className="mb-small whitespace-nowrap py-[clamp(8px,1.5vh,13px)] pr-[12px] text-[#5a616b]">{txn.date}</td>
                         <td className="mb-small py-[clamp(8px,1.5vh,13px)] pr-[12px] text-[#20242c]">{txn.description}</td>
                         <td
@@ -88,7 +97,7 @@ export default function BankPage() {
                           }`}
                         >
                           {txn.type === "debit" ? "" : "+ "}
-                          {txn.amount}
+                          {rm(txn.amount)}
                         </td>
                       </tr>
                     ))}
@@ -141,7 +150,7 @@ function FilterSelect({ defaultValue, options }: { defaultValue: string; options
     <div className="relative">
       <select
         defaultValue={defaultValue}
-        className="mb-small w-full appearance-none rounded-[8px] border border-[#e2e5ea] bg-white py-[clamp(7px,1.3vh,10px)] pl-[clamp(10px,1vw,14px)] pr-[30px] font-medium text-[#20242c] outline-none transition-colors focus:border-[#efab30]"
+        className="mb-body w-full appearance-none rounded-[8px] border border-[#e2e5ea] bg-white px-[clamp(12px,1.2vw,16px)] py-[clamp(9px,1.6vh,12px)] font-medium text-[#20242c] outline-none transition-colors focus:border-[#efab30]"
       >
         {options.map((o) => (
           <option key={o}>{o}</option>
@@ -149,7 +158,7 @@ function FilterSelect({ defaultValue, options }: { defaultValue: string; options
       </select>
       <svg
         viewBox="0 0 24 24"
-        className="pointer-events-none absolute right-[10px] top-1/2 h-[14px] w-[14px] -translate-y-1/2 text-[#20242c]"
+        className="pointer-events-none absolute right-[14px] top-1/2 h-[16px] w-[16px] -translate-y-1/2 text-[#20242c]"
         fill="none"
       >
         <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />

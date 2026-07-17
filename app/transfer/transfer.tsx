@@ -678,7 +678,6 @@ export default function TransferPage() {
           guardianPhone={guardianPhone}
           callStatus={callStatus}
           callError={callError}
-          transcript={transcript}
           onRetryCall={() => guardianPhone && callVarsRef.current && placeVerificationCall(guardianPhone, callVarsRef.current)}
           onClose={closeHalt}
         />
@@ -756,7 +755,6 @@ function HaltModal({
   guardianPhone,
   callStatus,
   callError,
-  transcript,
   onRetryCall,
   onClose,
 }: {
@@ -764,7 +762,6 @@ function HaltModal({
   guardianPhone: string;
   callStatus: CallStatus;
   callError: string;
-  transcript: TranscriptEntry[];
   onRetryCall: () => void;
   onClose: () => void;
 }) {
@@ -826,25 +823,10 @@ function HaltModal({
                   <span className="text-[14px] font-bold text-[#1e2129]">{statusText[callStatus]}</span>
                 </div>
                 <p className="mt-[4px] text-[12.5px] text-[#8b9099]">
-                  Scam Guard AI is calling the guardian to confirm this transfer.
+                  Scam Guard AI is calling the guardian to confirm this transfer. The full call
+                  transcript is saved to transcript.txt.
                 </p>
                 {callError && <p className="mt-[6px] text-[12.5px] font-medium text-[#e0393e]">{callError}</p>}
-
-                {transcript.length > 0 && (
-                  <div className="mt-[12px] max-h-[150px] space-y-[8px] overflow-y-auto">
-                    {transcript.map((t, i) => (
-                      <div key={i} className={`flex ${t.role === "ai" ? "justify-start" : "justify-end"}`}>
-                        <div
-                          className={`max-w-[85%] rounded-[12px] px-[11px] py-[7px] text-[12.5px] leading-snug ${
-                            t.role === "ai" ? "border border-[#edeff2] bg-white text-[#20242c]" : "bg-[#efab30] text-white"
-                          }`}
-                        >
-                          {t.message}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </>
             ) : (
               <p className="text-[13px] text-[#8a6516]">

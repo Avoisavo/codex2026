@@ -833,8 +833,7 @@ function HaltModal({
                   <span className="text-[14px] font-bold text-[#1e2129]">{statusText[callStatus]}</span>
                 </div>
                 <p className="mt-[4px] text-[12.5px] text-[#8b9099]">
-                  Scam Guard AI is calling the guardian to confirm this transfer. The full call
-                  transcript is saved to transcript.txt.
+                  Scam Guard AI is calling to confirm this transfer.
                 </p>
                 {callError && <p className="mt-[6px] text-[12.5px] font-medium text-[#e0393e]">{callError}</p>}
               </>

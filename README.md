@@ -104,7 +104,47 @@ DATABRICKS_SCHEMA=banking_app
 DATABRICKS_MIRROR=off
 ```
 
-Run the app:
+### Obtaining the API keys
+
+#### ElevenLabs — voice agent (required)
+
+1. Create an account at [elevenlabs.io](https://elevenlabs.io).
+2. **API key** → click your profile (bottom-left) → **API Keys** → **Create Key** → copy it
+   into `ELEVENLABS_API_KEY`.
+3. **Agent** → **Conversational AI → Agents → Create agent**. Paste the system prompt and
+   first message from [`docs/scam-guard-agent.md`](docs/scam-guard-agent.md), pick an LLM and
+   a voice, add the 9 dynamic variables (with default values), then **Publish**. Copy the
+   **Agent ID** (shown on the agent page / in the URL) into `NEXT_PUBLIC_ELEVENLABS_AGENT_ID`.
+   > Publishing matters — outbound calls always use the **last published** version.
+4. **Phone number** → **Conversational AI → Phone Numbers → Import number** and connect your
+   Twilio number (see below). Copy the resulting **Phone Number ID** into
+   `ELEVENLABS_PHONE_NUMBER_ID`, and attach the number to your agent for outbound calls.
+
+#### Twilio — phone calling (required, connected through ElevenLabs)
+
+1. Create an account at [twilio.com](https://www.twilio.com).
+2. On the Console dashboard, copy your **Account SID** and **Auth Token**.
+3. **Phone Numbers → Buy a number** — pick one with **Voice** capability.
+4. Use that number + SID + Auth Token when importing into ElevenLabs (step 4 above).
+   > Trial accounts can only call **verified** numbers — add your test phone under
+   > [Verified Caller IDs](https://console.twilio.com/us1/develop/phone-numbers/manage/verified).
+
+#### Databricks — cloud mirror (optional)
+
+The app runs fully on the local JSON store, so this is optional.
+
+1. In your workspace, open **SQL Warehouses → (your warehouse) → Connection details**.
+2. Copy **Server hostname** → `DATABRICKS_SERVER_HOSTNAME` and **HTTP path** →
+   `DATABRICKS_HTTP_PATH`.
+3. Create a **personal access token**: **Settings → Developer → Access tokens → Generate** →
+   `DATABRICKS_TOKEN`.
+4. Set `DATABRICKS_CATALOG` to a catalog you can write to. Run `SHOW CATALOGS` in a SQL editor
+   to check — `main` may not exist; `workspace` usually does. Set `DATABRICKS_SCHEMA` to any
+   name (it's created for you).
+5. Keep `DATABRICKS_MIRROR=off` for the fast local-only experience; set it to `on` only if you
+   want the (slower, cold-start) cloud sync.
+
+### Run the app
 
 ```bash
 npm run dev

@@ -20,6 +20,14 @@ const PAYMENT_TYPES = [
   "Bill Payment",
 ];
 
+// Steps shown in the "AI Scam Guard analyzing…" modal while the precheck runs.
+const ANALYZE_STEPS = [
+  "Verifying recipient account records",
+  "Checking your transaction limit",
+  "Screening against flagged & suspicious accounts",
+  "Assessing overall transfer risk",
+];
+
 type Step = "form" | "review" | "done" | "rejected";
 type CallStatus = "idle" | "calling" | "active" | "ended" | "error";
 type TranscriptEntry = { role: "user" | "ai"; message: string; time: number };
@@ -56,6 +64,8 @@ export default function TransferPage() {
   const [paymentType, setPaymentType] = useState(PAYMENT_TYPES[0]);
 
   // AI precheck / verification-call state
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeStep, setAnalyzeStep] = useState(0);
   const [halted, setHalted] = useState(false);
   const [reasons, setReasons] = useState<string[]>([]);
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
@@ -81,6 +91,25 @@ export default function TransferPage() {
     }
   };
   useEffect(() => () => stopPoll(), []);
+
+  // Demo shortcut: press Space (when not typing in a field) to autofill a flagged transfer.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "Space" && e.key !== " ") return;
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return; // let space type normally
+      if (step !== "form") return;
+      e.preventDefault();
+      setRecipient("Quick Cash Enterprise");
+      setRecipientBank("Maybank");
+      setAccount("8842 1190 3321");
+      setAmount("10000");
+      setReference("Loan release fee");
+      setPaymentType(PAYMENT_TYPES[0]);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step]);
 
   const balance = user?.balance ?? 0;
   const account_no = user?.accountNo ?? "1622 5471 7348";
@@ -219,9 +248,21 @@ export default function TransferPage() {
     if (!user || submitting) return;
 
     if (parentalEnabled) {
-      setSubmitting(true);
-      const { flags, suspiciousStatus, suspiciousReason } = await runPrecheck();
-      setSubmitting(false);
+      // Show the "AI Scam Guard" analyzing modal while the checks run.
+      setAnalyzeStep(0);
+      setAnalyzing(true);
+      const ticker = setInterval(
+        () => setAnalyzeStep((s) => Math.min(s + 1, ANALYZE_STEPS.length)),
+        700
+      );
+      const [{ flags, suspiciousStatus, suspiciousReason }] = await Promise.all([
+        runPrecheck(),
+        new Promise((r) => setTimeout(r, 2900)), // keep the analysis visible
+      ]);
+      clearInterval(ticker);
+      setAnalyzeStep(ANALYZE_STEPS.length);
+      await new Promise((r) => setTimeout(r, 450));
+      setAnalyzing(false);
 
       if (flags.length > 0) {
         setReasons(flags);
@@ -612,6 +653,8 @@ export default function TransferPage() {
         </div>
       </MaybankChrome>
 
+      {analyzing && <AnalyzingModal step={analyzeStep} amount={fmt(amountNum)} recipient={recipient} />}
+
       {halted && (
         <HaltModal
           reasons={reasons}
@@ -624,6 +667,68 @@ export default function TransferPage() {
         />
       )}
     </>
+  );
+}
+
+/* ── AI analyzing modal ────────────────────────────────────────────────── */
+
+function AnalyzingModal({ step, amount, recipient }: { step: number; amount: string; recipient: string }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 p-[20px]">
+      <div className="w-full max-w-[440px] overflow-hidden rounded-[16px] border border-[#edeff2] bg-white shadow-[0_30px_80px_-20px_rgba(20,26,58,0.5)]">
+        {/* Header */}
+        <div className="flex items-center gap-[13px] px-[24px] pt-[24px] pb-[18px]">
+          <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-[12px] bg-[#fdf3e2] text-[#d1901a]">
+            <svg viewBox="0 0 24 24" className="h-[23px] w-[23px]" fill="none">
+              <path d="M12 3 5 6v6c0 4 3 6.5 7 9 4-2.5 7-5 7-9V6l-7-3Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+              <path d="m9 12 2 2 4-4" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <div>
+            <h3 className="text-[18px] font-extrabold tracking-[-0.2px] text-[#1e2129]">AI Scam Guard</h3>
+            <p className="mt-[2px] text-[13px] text-[#6b7280]">
+              Analyzing your RM {amount} transfer to {recipient}…
+            </p>
+          </div>
+        </div>
+
+        <ul className="space-y-[4px] border-t border-[#eef0f3] px-[20px] py-[18px]">
+          {ANALYZE_STEPS.map((label, i) => {
+            const done = i < step;
+            const active = i === step;
+            return (
+              <li
+                key={label}
+                className={`flex items-center gap-[12px] rounded-[10px] px-[12px] py-[11px] transition-colors ${
+                  active ? "bg-[#fdf6e8]" : "bg-transparent"
+                }`}
+              >
+                <span className="grid h-[24px] w-[24px] shrink-0 place-items-center">
+                  {done ? (
+                    <span className="grid h-[24px] w-[24px] place-items-center rounded-full bg-[#e4f6e9] text-[#1f9d55]">
+                      <svg viewBox="0 0 24 24" className="h-[14px] w-[14px]" fill="none">
+                        <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                  ) : active ? (
+                    <span className="h-[18px] w-[18px] animate-spin rounded-full border-[2.5px] border-[#f4e2bd] border-t-[#efab30]" />
+                  ) : (
+                    <span className="h-[9px] w-[9px] rounded-full bg-[#d4d8de]" />
+                  )}
+                </span>
+                <span
+                  className={`text-[14px] ${
+                    done ? "font-medium text-[#20242c]" : active ? "font-semibold text-[#b5801a]" : "text-[#9ca3af]"
+                  }`}
+                >
+                  {label}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
   );
 }
 
@@ -665,22 +770,22 @@ function HaltModal({
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 p-[20px]">
       <div className="w-full max-w-[480px] overflow-hidden rounded-[18px] bg-white shadow-[0_30px_80px_-20px_rgba(0,0,0,0.5)]">
         {/* Header */}
-        <div className="flex items-start gap-[14px] bg-gradient-to-br from-[#e0393e] to-[#b5262b] px-[26px] py-[22px] text-white">
-          <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full bg-white/20">
+        <div className="flex items-start gap-[13px] px-[26px] pt-[24px] pb-[18px]">
+          <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-[12px] bg-[#fdeaea] text-[#e0393e]">
             <svg viewBox="0 0 24 24" className="h-[24px] w-[24px]" fill="none">
               <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </span>
           <div>
-            <h3 className="text-[19px] font-extrabold leading-tight">Transaction halted</h3>
-            <p className="mt-[3px] text-[13px] font-medium text-white/85">
+            <h3 className="text-[19px] font-extrabold leading-tight text-[#1e2129]">Transaction halted</h3>
+            <p className="mt-[3px] text-[13px] text-[#6b7280]">
               An AI scam-guard is verifying this transfer before it can proceed.
             </p>
           </div>
         </div>
 
         {/* Body */}
-        <div className="px-[26px] py-[22px]">
+        <div className="border-t border-[#eef0f3] px-[26px] py-[20px]">
           <p className="text-[12px] font-bold uppercase tracking-[0.6px] text-[#8b9099]">Why this was flagged</p>
           <ul className="mt-[10px] space-y-[8px]">
             {reasons.map((r, i) => (
@@ -714,7 +819,7 @@ function HaltModal({
                       <div key={i} className={`flex ${t.role === "ai" ? "justify-start" : "justify-end"}`}>
                         <div
                           className={`max-w-[85%] rounded-[12px] px-[11px] py-[7px] text-[12.5px] leading-snug ${
-                            t.role === "ai" ? "bg-white text-[#20242c] shadow-sm" : "bg-[#1273e8] text-white"
+                            t.role === "ai" ? "border border-[#edeff2] bg-white text-[#20242c]" : "bg-[#efab30] text-white"
                           }`}
                         >
                           {t.message}

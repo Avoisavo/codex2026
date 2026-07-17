@@ -73,6 +73,7 @@ export default function TransferPage() {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const verdictActedRef = useRef(false);
+  const savedRef = useRef(false);
   const callVarsRef = useRef<Record<string, string> | null>(null);
 
   useEffect(() => {
@@ -270,6 +271,7 @@ export default function TransferPage() {
         setCallStatus("idle");
         setCallError("");
         verdictActedRef.current = false;
+        savedRef.current = false;
         setHalted(true);
 
         if (guardianPhone) {
@@ -335,14 +337,15 @@ export default function TransferPage() {
         if (v && !verdictActedRef.current) {
           verdictActedRef.current = true;
           stopPoll();
-          if (v === "approved") await handleApproved();
-          else await handleBlocked();
+          if (v === "approved") await handleApproved(t);
+          else await handleBlocked(t);
           return;
         }
 
         if (data.status === "done") {
           setCallStatus("ended");
           stopPoll();
+          saveTranscript(t, "ENDED");
         }
       } catch {
         // ignore
@@ -350,7 +353,19 @@ export default function TransferPage() {
     }, 2500);
   };
 
-  const handleApproved = async () => {
+  // Persist the verification-call transcript to transcript.txt (once per call).
+  const saveTranscript = (t: TranscriptEntry[], verdict: string) => {
+    if (savedRef.current) return;
+    savedRef.current = true;
+    fetch("/api/transcripts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript: t, amount: fmt(amountNum), recipient, verdict }),
+    }).catch(() => {});
+  };
+
+  const handleApproved = async (t: TranscriptEntry[]) => {
+    saveTranscript(t, "APPROVED");
     await performWrites();
     setHalted(false);
     setCallStatus("idle");
@@ -358,7 +373,8 @@ export default function TransferPage() {
     setStep("done");
   };
 
-  const handleBlocked = async () => {
+  const handleBlocked = async (t: TranscriptEntry[]) => {
+    saveTranscript(t, "BLOCKED");
     await recordBlocked();
     stopPoll();
     setHalted(false);
@@ -369,6 +385,7 @@ export default function TransferPage() {
 
   const closeHalt = () => {
     stopPoll();
+    if (transcript.length > 0) saveTranscript(transcript, "CANCELLED");
     setHalted(false);
     setCallStatus("idle");
     setTranscript([]);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
-  const { to_number } = await request.json();
+  const { to_number, dynamic_variables } = await request.json();
 
   if (!to_number || typeof to_number !== "string") {
     return NextResponse.json(
@@ -21,6 +21,26 @@ export async function POST(request: Request) {
     );
   }
 
+  // Coerce dynamic variables to the string/number/boolean values ElevenLabs expects.
+  let cleanVars: Record<string, string | number | boolean> | undefined;
+  if (dynamic_variables && typeof dynamic_variables === "object") {
+    cleanVars = {};
+    for (const [k, v] of Object.entries(dynamic_variables as Record<string, unknown>)) {
+      cleanVars[k] =
+        typeof v === "number" || typeof v === "boolean" ? v : String(v ?? "");
+    }
+  }
+
+  const body: Record<string, unknown> = {
+    agent_id: agentId,
+    agent_phone_number_id: phoneNumberId,
+    to_number,
+  };
+  // Pass the transaction context into the agent's prompt/first-message variables.
+  if (cleanVars) {
+    body.conversation_initiation_client_data = { dynamic_variables: cleanVars };
+  }
+
   const res = await fetch(
     "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
     {
@@ -29,11 +49,7 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
         "xi-api-key": apiKey,
       },
-      body: JSON.stringify({
-        agent_id: agentId,
-        agent_phone_number_id: phoneNumberId,
-        to_number,
-      }),
+      body: JSON.stringify(body),
     }
   );
 

@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --color-tng-blue: #0f6fe5;
+  --color-tng-navy: #1b1a63;
+  --color-tng-ink: #0d1424;
+  --color-tng-muted: #6b7280;
+  --color-tng-page: #f4f5f9;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #d7d9e0;
+  color: var(--color-tng-ink);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Blue -> purple wash behind the status bar, search and balance. */
+.tng-header {
+  background: linear-gradient(
+    103deg,
+    #1273e8 0%,
+    #1a6fe0 38%,
+    #5d2f9e 78%,
+    #7a3aab 100%
+  );
+  position: relative;
+  isolation: isolate;
+}
+
+/* Dark navy wedge slicing diagonally across the right of the header. */
+.tng-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, #2a1c74 0%, #201a5f 55%, #1a1550 100%);
+  clip-path: polygon(100% 0, 100% 100%, 30% 100%, 76% 0);
+  z-index: -1;
+}
+
+/* Violet bloom in the top-right corner. */
+.tng-header::after {
+  content: "";
+  position: absolute;
+  top: -46%;
+  right: -22%;
+  width: 78%;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgba(150, 92, 220, 0.5) 0%,
+    rgba(120, 70, 200, 0.16) 55%,
+    transparent 72%
+  );
+  z-index: -1;
+}
+
+.tng-scroll {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+}
+.tng-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.tng-rail {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.tng-rail::-webkit-scrollbar {
+  display: none;
+}
+.tng-rail > * {
+  scroll-snap-align: center;
+}
+
+@keyframes tng-bar {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.tng-bar {
+  animation: tng-bar 900ms ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes tng-ping {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+.tng-ping {
+  animation: tng-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}

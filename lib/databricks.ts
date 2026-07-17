@@ -22,6 +22,13 @@ export const SCHEMA = process.env.DATABRICKS_SCHEMA ?? "banking_app";
 /** True only when a token is configured — lets the hybrid store skip DB cleanly. */
 export const DB_ENABLED = Boolean(HOST && HTTP_PATH && TOKEN);
 
+/**
+ * Whether to actually mirror reads/writes to Databricks. OFF by default so the
+ * app runs purely on the fast local JSON store; the Databricks code stays in
+ * place and can be re-enabled with DATABRICKS_MIRROR=on in .env.local.
+ */
+export const DB_MIRROR = DB_ENABLED && process.env.DATABRICKS_MIRROR === "on";
+
 export const TABLE = {
   users: `${CATALOG}.${SCHEMA}.users`,
   transfers: `${CATALOG}.${SCHEMA}.transfers`,

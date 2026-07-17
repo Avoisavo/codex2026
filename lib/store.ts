@@ -20,15 +20,21 @@ export * from "./types";
  *     best-effort so a slow/expired/offline warehouse can never break the demo.
  */
 
-/** Run a Databricks op, swallowing any failure (returns undefined on error/disabled). */
+/** Await a Databricks read, swallowing failures (returns undefined when the mirror is off). */
 async function tryDb<T>(fn: () => Promise<T>): Promise<T | undefined> {
-  if (!dbx.DB_ENABLED) return undefined;
+  if (!dbx.DB_MIRROR) return undefined;
   try {
     return await fn();
   } catch (err) {
     console.warn("[hybrid] databricks skipped:", err instanceof Error ? err.message : err);
     return undefined;
   }
+}
+
+/** Fire-and-forget a Databricks write so it never blocks the response (no-op when the mirror is off). */
+function mirror(fn: () => Promise<unknown>): void {
+  if (!dbx.DB_MIRROR) return;
+  void fn().catch((err) => console.warn("[hybrid] databricks mirror failed:", err instanceof Error ? err.message : err));
 }
 
 /* ── Users ────────────────────────────────────────────────────────────── */
@@ -83,7 +89,7 @@ export async function createUser(input: CreateUserInput): Promise<User> {
   await json.mutate((d) => {
     d.users.push(user);
   });
-  await tryDb(() => dbx.dbInsertUser(user));
+  mirror(() => dbx.dbInsertUser(user));
   return user;
 }
 
@@ -99,7 +105,7 @@ export async function updateUser(id: string, patch: dbx.UserPatch): Promise<User
     if (Array.isArray(patch.transactions)) u.transactions = patch.transactions;
     updated = u;
   });
-  if (updated) await tryDb(() => dbx.dbUpdateUser(id, patch));
+  if (updated) mirror(() => dbx.dbUpdateUser(id, patch));
   return updated;
 }
 
@@ -147,7 +153,7 @@ export async function createTransfer(input: CreateTransferInput): Promise<Transf
   await json.mutate((d) => {
     d.transfers.unshift(transfer);
   });
-  await tryDb(() => dbx.dbInsertTransfer(transfer));
+  mirror(() => dbx.dbInsertTransfer(transfer));
   return transfer;
 }
 
@@ -201,7 +207,7 @@ export async function addSuspicious(input: AddSuspiciousInput): Promise<Suspicio
   await json.mutate((d) => {
     d.suspicious.unshift(entry);
   });
-  await tryDb(() => dbx.dbInsertSuspicious(entry));
+  mirror(() => dbx.dbInsertSuspicious(entry));
   return entry;
 }
 
@@ -209,7 +215,7 @@ export async function removeSuspicious(id: string): Promise<void> {
   await json.mutate((d) => {
     d.suspicious = d.suspicious.filter((s) => s.id !== id);
   });
-  await tryDb(() => dbx.dbDeleteSuspicious(id));
+  mirror(() => dbx.dbDeleteSuspicious(id));
 }
 
 /* ── Init / reset ─────────────────────────────────────────────────────── */

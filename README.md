@@ -1,36 +1,97 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Codex 2026 - Scam Guard AI
+
+A Touch 'n Go eWallet UI clone with an AI-powered **Scam Guard** that calls users to verify suspicious transactions. Built with Next.js, ElevenLabs Conversational AI, and Twilio.
+
+## Features
+
+- **Touch 'n Go eWallet UI** (`/`) - Pixel-accurate clone of the Touch 'n Go home screen, rendered inside a phone frame. All icons are inline SVGs.
+- **Scam Guard AI** (`/test`) - Enter a phone number, press call, and the AI agent rings that number to ask verification questions (purpose of transaction, relationship with recipient, signs of nervousness). Live transcript streams to the UI in real time.
+
+## How It Works
+
+1. User enters a phone number on the `/test` page and presses call
+2. The app hits `/api/call`, which triggers an **ElevenLabs outbound call** via Twilio
+3. The AI agent calls the phone number and conducts a scam-verification conversation
+4. The frontend polls `/api/transcript` every 2 seconds to fetch the live transcript from ElevenLabs
+5. Transcript bubbles appear in the UI as the conversation progresses
+
+## Tech Stack
+
+- **Next.js 16** with App Router and Turbopack
+- **React 19** / TypeScript / Tailwind CSS v4
+- **ElevenLabs Conversational AI** - AI agent with outbound calling
+- **Twilio** - Phone number provisioning and call routing
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- An [ElevenLabs](https://elevenlabs.io) account with a Conversational AI agent
+- A [Twilio](https://www.twilio.com) account with a phone number
+
+### Setup
+
+1. Clone the repo and install dependencies:
+
+```bash
+git clone <repo-url>
+cd codex2026
+npm install
+```
+
+2. Create a `.env.local` file in the project root:
+
+```env
+# ElevenLabs
+NEXT_PUBLIC_ELEVENLABS_AGENT_ID=your_agent_id
+ELEVENLABS_API_KEY=your_api_key
+ELEVENLABS_PHONE_NUMBER_ID=your_phone_number_id
+
+# Twilio
+TWILIO_ACCOUNT_SID=your_account_sid
+TWILIO_AUTH_TOKEN=your_auth_token
+TWILIO_PHONE_NUMBER=your_twilio_number
+```
+
+3. Start the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. Open [http://localhost:3000](http://localhost:3000) for the eWallet UI, or [http://localhost:3000/test](http://localhost:3000/test) for the Scam Guard AI.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Twilio Trial Limitation
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+On a Twilio trial account, you can only call **verified phone numbers**. Add numbers at:
+[Twilio Verified Caller IDs](https://console.twilio.com/us1/develop/phone-numbers/manage/verified)
 
-## Learn More
+Upgrading to a paid Twilio account removes this restriction.
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+app/
+  page.tsx                    # Touch 'n Go eWallet home UI
+  test/page.tsx               # Scam Guard AI - phone call + live transcript
+  api/
+    call/route.ts             # POST - triggers ElevenLabs outbound call
+    transcript/route.ts       # GET  - fetches conversation transcript
+  components/
+    icons.tsx                 # All SVG icons
+    PhoneShell.tsx            # Phone frame wrapper (440x956)
+    BottomNav.tsx             # Bottom navigation bar
+    home/HomeInteractive.tsx  # Client-side interactive components for home page
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## API Routes
 
-## Deploy on Vercel
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/call` | POST | Accepts `{ to_number }`, triggers an outbound call via ElevenLabs + Twilio |
+| `/api/transcript` | GET | Accepts `?id=conversation_id`, returns live transcript from ElevenLabs |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## License
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Private project.

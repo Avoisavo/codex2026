@@ -1,13 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import type { User } from "@/lib/types";
 import { MaybankChrome } from "../components/maybank/MaybankChrome";
 
-const FROM_ACCOUNTS = [
-  { id: "savings", label: "Personal Account (Savings)", number: "1622 5471 7348", balance: 89187.9 },
-  { id: "current", label: "Current Account", number: "5140 8827 1093", balance: 12640.55 },
-];
+const USER_ID = "u_danial";
 
 const FAVOURITES = [
   { name: "Jonathan Lim", bank: "Maybank", account: "1284 5590 2231" },
@@ -22,14 +20,34 @@ const PAYMENT_TYPES = [
   "Bill Payment",
 ];
 
-type Step = "form" | "review" | "done";
+type Step = "form" | "review" | "done" | "rejected";
+type CallStatus = "idle" | "calling" | "active" | "ended" | "error";
+type TranscriptEntry = { role: "user" | "ai"; message: string; time: number };
 
 const fmt = (n: number) =>
   n.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const norm = (s: string) => s.replace(/\s/g, "");
+
+// Read the agent's final APPROVED / BLOCKED decision out of its spoken messages.
+// The agent is instructed to use the words APPROVED / BLOCKED only in its final
+// line, so we scan newest-first and match on those words alone (BLOCKED wins ties).
+function deriveVerdict(transcript: TranscriptEntry[]): "approved" | "blocked" | null {
+  for (let i = transcript.length - 1; i >= 0; i--) {
+    const t = transcript[i];
+    if (t.role !== "ai") continue;
+    const m = t.message.toLowerCase();
+    if (/\bblocked\b/.test(m)) return "blocked";
+    if (/\bapproved\b/.test(m)) return "approved";
+  }
+  return null;
+}
+
 export default function TransferPage() {
   const [step, setStep] = useState<Step>("form");
-  const [fromId, setFromId] = useState(FROM_ACCOUNTS[0].id);
+  const [user, setUser] = useState<User | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
   const [recipient, setRecipient] = useState("");
   const [recipientBank, setRecipientBank] = useState("Maybank");
   const [account, setAccount] = useState("");
@@ -37,10 +55,42 @@ export default function TransferPage() {
   const [reference, setReference] = useState("");
   const [paymentType, setPaymentType] = useState(PAYMENT_TYPES[0]);
 
-  const from = useMemo(() => FROM_ACCOUNTS.find((a) => a.id === fromId)!, [fromId]);
-  const amountNum = parseFloat(amount) || 0;
+  // AI precheck / verification-call state
+  const [halted, setHalted] = useState(false);
+  const [reasons, setReasons] = useState<string[]>([]);
+  const [callStatus, setCallStatus] = useState<CallStatus>("idle");
+  const [callError, setCallError] = useState("");
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const verdictActedRef = useRef(false);
+  const callVarsRef = useRef<Record<string, string> | null>(null);
 
-  const canContinue = !!recipient.trim() && !!account.trim() && amountNum > 0 && amountNum <= from.balance;
+  useEffect(() => {
+    fetch(`/api/users/${USER_ID}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((u) => {
+        if (u && !u.error) setUser(u);
+      })
+      .catch(() => {});
+  }, []);
+
+  const stopPoll = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+  useEffect(() => () => stopPoll(), []);
+
+  const balance = user?.balance ?? 0;
+  const account_no = user?.accountNo ?? "1622 5471 7348";
+  const fromLabel = "Personal Account (Savings)";
+  const amountNum = parseFloat(amount) || 0;
+  const parentalEnabled = !!user?.parentalControl.enabled;
+  const guardianPhone = (user?.parentalControl.smsPhone ?? "").trim();
+
+  const canContinue =
+    !!user && !!recipient.trim() && !!account.trim() && amountNum > 0 && amountNum <= balance;
 
   const pickFavourite = (f: (typeof FAVOURITES)[number]) => {
     setRecipient(f.name);
@@ -57,219 +107,658 @@ export default function TransferPage() {
     setPaymentType(PAYMENT_TYPES[0]);
   };
 
-  return (
-    <MaybankChrome
-      hero={
-        <div className="pt-[clamp(14px,2.4vh,24px)] pb-[clamp(36px,6.2vh,60px)]">
-          <h1 className="mb-h1 text-[#1e2129]">Pay &amp; Transfer</h1>
-          <p className="mb-sub mt-[clamp(4px,1vh,8px)] text-[#5a4a1c]">
-            Move money instantly with DuitNow, or schedule an interbank transfer.
-          </p>
-        </div>
+  /* ── AI precheck (only runs when parental control is enabled) ─────────── */
+  const runPrecheck = async (): Promise<{
+    flags: string[];
+    suspiciousStatus: string;
+    suspiciousReason: string;
+  }> => {
+    const pc = user!.parentalControl;
+    const flags: string[] = [];
+    let suspiciousStatus = "not on the bank's suspicious-account list";
+    let suspiciousReason = "none";
+
+    // Check #2 — amount higher than the preset transaction limit
+    if (amountNum > pc.transactionLimit) {
+      flags.push(`Amount RM ${fmt(amountNum)} exceeds your transaction limit of RM ${fmt(pc.transactionLimit)}.`);
+    }
+
+    // Check #3 — recipient account flagged as suspicious
+    try {
+      const data = await (await fetch(`/api/suspicious?account=${encodeURIComponent(account)}`, { cache: "no-store" })).json();
+      if (data?.flagged) {
+        const reason = data.matches?.[0]?.reason ?? "reported account";
+        suspiciousStatus = "FLAGGED as a known suspicious account";
+        suspiciousReason = reason;
+        flags.push(`Recipient account is flagged as suspicious — ${reason}.`);
       }
-    >
-      <div className="flex h-full flex-col pt-[clamp(14px,2.4vh,22px)]">
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-[clamp(18px,2vw,26px)]">
-          {/* ── Main column ── */}
-          <div className="min-h-0 overflow-hidden rounded-[12px] border border-[#edeff2] bg-white p-[clamp(18px,3vh,28px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)]">
-            {step === "form" && (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (canContinue) setStep("review");
-                }}
-              >
-                <h2 className="mb-title text-[#1e2129]">Transfer details</h2>
+    } catch {
+      // ignore — don't block on a failed check
+    }
 
-                <Field label="From account">
-                  <Select value={fromId} onChange={setFromId}>
-                    {FROM_ACCOUNTS.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.label} — RM {fmt(a.balance)}
+    // Check #1 — account NOT in my (completed) transfer history → new/unknown payee
+    try {
+      const list = await (await fetch(`/api/transfers?userId=${USER_ID}`, { cache: "no-store" })).json();
+      const known =
+        Array.isArray(list) &&
+        list.some((t: { accountNumber?: string; status?: string }) => t.status === "completed" && norm(String(t.accountNumber ?? "")) === norm(account));
+      if (!known) flags.push("New payee — this account is not in your transfer history.");
+    } catch {
+      // ignore
+    }
+
+    return { flags, suspiciousStatus, suspiciousReason };
+  };
+
+  /* ── Actual transfer write ────────────────────────────────────────────── */
+  const performWrites = async () => {
+    if (!user) return;
+    const newBalance = Math.max(0, user.balance - amountNum);
+    const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    const label = paymentType.includes("DuitNow") ? "DuitNow Transfer" : "Transfer";
+    const newTxn = {
+      id: `t_${crypto.randomUUID().slice(0, 8)}`,
+      date: today,
+      description: `${label} to ${recipient}`,
+      amount: amountNum,
+      type: "debit" as const,
+    };
+    const updatedTxns = [newTxn, ...user.transactions];
+
+    try {
+      await fetch(`/api/users/${USER_ID}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balance: newBalance, transactions: updatedTxns }),
+      });
+      await fetch(`/api/transfers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: USER_ID,
+          fromAccount: fromLabel,
+          recipientName: recipient,
+          recipientBank,
+          accountNumber: account,
+          amount: amountNum,
+          reference,
+          paymentType,
+          status: "completed",
+        }),
+      });
+      setUser({ ...user, balance: newBalance, transactions: updatedTxns });
+    } catch (err) {
+      console.error("Transfer write failed:", err);
+    }
+  };
+
+  const recordBlocked = async () => {
+    try {
+      await fetch(`/api/transfers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: USER_ID,
+          fromAccount: fromLabel,
+          recipientName: recipient,
+          recipientBank,
+          accountNumber: account,
+          amount: amountNum,
+          reference,
+          paymentType,
+          status: "blocked",
+        }),
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  /* ── Confirm handler: precheck → halt + verification call, or complete ── */
+  const attemptTransfer = async () => {
+    if (!user || submitting) return;
+
+    if (parentalEnabled) {
+      setSubmitting(true);
+      const { flags, suspiciousStatus, suspiciousReason } = await runPrecheck();
+      setSubmitting(false);
+
+      if (flags.length > 0) {
+        setReasons(flags);
+        setTranscript([]);
+        setCallStatus("idle");
+        setCallError("");
+        verdictActedRef.current = false;
+        setHalted(true);
+
+        if (guardianPhone) {
+          const vars: Record<string, string> = {
+            user_name: user.name,
+            amount: fmt(amountNum),
+            recipient,
+            recipient_bank: recipientBank,
+            account_number: account,
+            payment_type: paymentType,
+            suspicious_status: suspiciousStatus,
+            suspicious_reason: suspiciousReason,
+            flagged_reasons: flags.join("; "),
+          };
+          callVarsRef.current = vars;
+          placeVerificationCall(guardianPhone, vars);
+        }
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    await performWrites();
+    setSubmitting(false);
+    setStep("done");
+  };
+
+  /* ── Twilio + ElevenLabs verification call ────────────────────────────── */
+  const placeVerificationCall = async (phone: string, vars: Record<string, string>) => {
+    setCallStatus("calling");
+    setCallError("");
+    try {
+      const res = await fetch("/api/call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to_number: phone, dynamic_variables: vars }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCallStatus("error");
+        setCallError(typeof data.error === "string" ? data.error : "Failed to place call");
+        return;
+      }
+      setCallStatus("active");
+      if (data.conversation_id) startPoll(data.conversation_id);
+    } catch {
+      setCallStatus("error");
+      setCallError("Network error placing the verification call.");
+    }
+  };
+
+  const startPoll = (convId: string) => {
+    stopPoll();
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/transcript?id=${convId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const t: TranscriptEntry[] = Array.isArray(data.transcript) ? data.transcript : [];
+        setTranscript(t);
+
+        const v = deriveVerdict(t);
+        if (v && !verdictActedRef.current) {
+          verdictActedRef.current = true;
+          stopPoll();
+          if (v === "approved") await handleApproved();
+          else await handleBlocked();
+          return;
+        }
+
+        if (data.status === "done") {
+          setCallStatus("ended");
+          stopPoll();
+        }
+      } catch {
+        // ignore
+      }
+    }, 2500);
+  };
+
+  const handleApproved = async () => {
+    await performWrites();
+    setHalted(false);
+    setCallStatus("idle");
+    setTranscript([]);
+    setStep("done");
+  };
+
+  const handleBlocked = async () => {
+    await recordBlocked();
+    stopPoll();
+    setHalted(false);
+    setCallStatus("idle");
+    setTranscript([]);
+    setStep("rejected");
+  };
+
+  const closeHalt = () => {
+    stopPoll();
+    setHalted(false);
+    setCallStatus("idle");
+    setTranscript([]);
+  };
+
+  return (
+    <>
+      <MaybankChrome
+        hero={
+          <div className="pt-[clamp(14px,2.4vh,24px)] pb-[clamp(36px,6.2vh,60px)]">
+            <h1 className="mb-h1 text-[#1e2129]">Pay &amp; Transfer</h1>
+            <p className="mb-sub mt-[clamp(4px,1vh,8px)] text-[#5a4a1c]">
+              {parentalEnabled
+                ? "Parental control is on — flagged transfers are verified by an AI scam-guard call before they go through."
+                : "Move money instantly with DuitNow, or schedule an interbank transfer."}
+            </p>
+          </div>
+        }
+      >
+        <div className="flex h-full flex-col pt-[clamp(14px,2.4vh,22px)]">
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-[clamp(18px,2vw,26px)]">
+            {/* ── Main column ── */}
+            <div className="min-h-0 overflow-hidden rounded-[12px] border border-[#edeff2] bg-white p-[clamp(18px,3vh,28px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)]">
+              {step === "form" && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (canContinue) setStep("review");
+                  }}
+                >
+                  <h2 className="mb-title text-[#1e2129]">Transfer details</h2>
+
+                  <Field label="From account">
+                    <Select value="savings" onChange={() => {}}>
+                      <option value="savings">
+                        {fromLabel} — RM {fmt(balance)}
                       </option>
-                    ))}
-                  </Select>
-                </Field>
-
-                <div className="grid grid-cols-2 gap-[clamp(10px,1.2vw,14px)]">
-                  <Field label="Recipient name">
-                    <Input value={recipient} onChange={setRecipient} placeholder="e.g. Jonathan Lim" />
+                    </Select>
                   </Field>
-                  <Field label="Recipient bank">
-                    <Select value={recipientBank} onChange={setRecipientBank}>
-                      {["Maybank", "CIMB Bank", "Public Bank", "RHB Bank", "Hong Leong Bank"].map((b) => (
-                        <option key={b}>{b}</option>
+
+                  <div className="grid grid-cols-2 gap-[clamp(10px,1.2vw,14px)]">
+                    <Field label="Recipient name">
+                      <Input value={recipient} onChange={setRecipient} placeholder="e.g. Jonathan Lim" />
+                    </Field>
+                    <Field label="Recipient bank">
+                      <Select value={recipientBank} onChange={setRecipientBank}>
+                        {["Maybank", "CIMB Bank", "Public Bank", "RHB Bank", "Hong Leong Bank"].map((b) => (
+                          <option key={b}>{b}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-[clamp(10px,1.2vw,14px)]">
+                    <Field label="Account number">
+                      <Input value={account} onChange={setAccount} placeholder="Account no." inputMode="numeric" />
+                    </Field>
+                    <Field label="Amount">
+                      <div className="relative">
+                        <span className="mb-body pointer-events-none absolute left-[14px] top-1/2 -translate-y-1/2 font-semibold text-[#8b9099]">
+                          RM
+                        </span>
+                        <input
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                          placeholder="0.00"
+                          inputMode="decimal"
+                          className="mb-body w-full rounded-[8px] border border-[#e2e5ea] bg-white py-[clamp(9px,1.6vh,12px)] pl-[44px] pr-[14px] font-semibold text-[#20242c] outline-none transition-colors focus:border-[#efab30]"
+                        />
+                      </div>
+                    </Field>
+                  </div>
+                  {amountNum > balance && (
+                    <p className="mb-small mt-[6px] font-medium text-[#e0393e]">
+                      Amount exceeds available balance (RM {fmt(balance)}).
+                    </p>
+                  )}
+
+                  <Field label="Recipient reference (optional)">
+                    <Input value={reference} onChange={setReference} placeholder="e.g. Dinner, Rent" />
+                  </Field>
+
+                  <Field label="Payment Type">
+                    <Select value={paymentType} onChange={setPaymentType}>
+                      {PAYMENT_TYPES.map((p) => (
+                        <option key={p}>{p}</option>
                       ))}
                     </Select>
                   </Field>
-                </div>
 
-                <div className="grid grid-cols-2 gap-[clamp(10px,1.2vw,14px)]">
-                  <Field label="Account number">
-                    <Input value={account} onChange={setAccount} placeholder="Account no." inputMode="numeric" />
-                  </Field>
-                  <Field label="Amount">
-                    <div className="relative">
-                      <span className="mb-body pointer-events-none absolute left-[14px] top-1/2 -translate-y-1/2 font-semibold text-[#8b9099]">
-                        RM
-                      </span>
-                      <input
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-                        placeholder="0.00"
-                        inputMode="decimal"
-                        className="mb-body w-full rounded-[8px] border border-[#e2e5ea] bg-white py-[clamp(9px,1.6vh,12px)] pl-[44px] pr-[14px] font-semibold text-[#20242c] outline-none transition-colors focus:border-[#efab30]"
-                      />
-                    </div>
-                  </Field>
-                </div>
-                {amountNum > from.balance && (
-                  <p className="mb-small mt-[6px] font-medium text-[#e0393e]">
-                    Amount exceeds available balance (RM {fmt(from.balance)}).
+                  <button
+                    type="submit"
+                    disabled={!canContinue}
+                    className="mb-body mt-[clamp(16px,2.6vh,20px)] w-full rounded-[8px] bg-[#efab30] py-[clamp(11px,1.9vh,13px)] font-bold text-white shadow-[0_10px_22px_-10px_rgba(239,171,48,0.95)] transition-colors hover:bg-[#e59f20] disabled:cursor-not-allowed disabled:bg-[#e7e9ed] disabled:text-[#a2a8b0] disabled:shadow-none"
+                  >
+                    Continue
+                  </button>
+                </form>
+              )}
+
+              {step === "review" && (
+                <div>
+                  <h2 className="mb-title text-[#1e2129]">Review your transfer</h2>
+                  <p className="mb-small mt-[3px] text-[#6b7280]">
+                    {parentalEnabled
+                      ? "This transfer will be AI-prechecked before it completes."
+                      : "Please confirm the details before you transfer."}
                   </p>
-                )}
 
-                <Field label="Recipient reference (optional)">
-                  <Input value={reference} onChange={setReference} placeholder="e.g. Dinner, Rent" />
-                </Field>
+                  <div className="mt-[clamp(12px,2vh,16px)] rounded-[12px] bg-[#f8f9fb] p-[clamp(14px,2.4vh,18px)] text-center">
+                    <p className="mb-small text-[#6b7280]">You are transferring</p>
+                    <p className="mb-amount mt-[6px] text-[#1e2129]">RM {fmt(amountNum)}</p>
+                    <p className="mb-small mt-[8px] text-[#6b7280]">
+                      to <span className="font-semibold text-[#20242c]">{recipient}</span>
+                    </p>
+                  </div>
 
-                <Field label="Payment Type">
-                  <Select value={paymentType} onChange={setPaymentType}>
-                    {PAYMENT_TYPES.map((p) => (
-                      <option key={p}>{p}</option>
-                    ))}
-                  </Select>
-                </Field>
+                  <dl className="mt-[clamp(10px,1.8vh,14px)] divide-y divide-[#eef0f3]">
+                    <ReviewRow label="From" value={fromLabel} sub={account_no} />
+                    <ReviewRow label="Recipient bank" value={recipientBank} />
+                    <ReviewRow label="Account number" value={account} />
+                    <ReviewRow label="Payment Type" value={paymentType} />
+                    <ReviewRow label="Reference" value={reference || "—"} />
+                  </dl>
 
-                <button
-                  type="submit"
-                  disabled={!canContinue}
-                  className="mb-body mt-[clamp(16px,2.6vh,20px)] w-full rounded-[8px] bg-[#efab30] py-[clamp(11px,1.9vh,13px)] font-bold text-white shadow-[0_10px_22px_-10px_rgba(239,171,48,0.95)] transition-colors hover:bg-[#e59f20] disabled:cursor-not-allowed disabled:bg-[#e7e9ed] disabled:text-[#a2a8b0] disabled:shadow-none"
-                >
-                  Continue
-                </button>
-              </form>
-            )}
-
-            {step === "review" && (
-              <div>
-                <h2 className="mb-title text-[#1e2129]">Review your transfer</h2>
-                <p className="mb-small mt-[3px] text-[#6b7280]">
-                  Please confirm the details before you transfer.
-                </p>
-
-                <div className="mt-[clamp(12px,2vh,16px)] rounded-[12px] bg-[#f8f9fb] p-[clamp(14px,2.4vh,18px)] text-center">
-                  <p className="mb-small text-[#6b7280]">You are transferring</p>
-                  <p className="mb-amount mt-[6px] text-[#1e2129]">RM {fmt(amountNum)}</p>
-                  <p className="mb-small mt-[8px] text-[#6b7280]">
-                    to <span className="font-semibold text-[#20242c]">{recipient}</span>
-                  </p>
-                </div>
-
-                <dl className="mt-[clamp(10px,1.8vh,14px)] divide-y divide-[#eef0f3]">
-                  <ReviewRow label="From" value={from.label} sub={from.number} />
-                  <ReviewRow label="Recipient bank" value={recipientBank} />
-                  <ReviewRow label="Account number" value={account} />
-                  <ReviewRow label="Payment Type" value={paymentType} />
-                  <ReviewRow label="Reference" value={reference || "—"} />
-                </dl>
-
-                <div className="mt-[clamp(14px,2.4vh,18px)] flex flex-row-reverse gap-[12px]">
-                  <button
-                    onClick={() => setStep("done")}
-                    className="mb-body flex-1 rounded-[8px] bg-[#efab30] py-[clamp(11px,1.9vh,13px)] font-bold text-white shadow-[0_10px_22px_-10px_rgba(239,171,48,0.95)] transition-colors hover:bg-[#e59f20]"
-                  >
-                    Confirm &amp; Transfer
-                  </button>
-                  <button
-                    onClick={() => setStep("form")}
-                    className="mb-body rounded-[8px] border border-[#e2e5ea] bg-white px-[28px] py-[clamp(11px,1.9vh,13px)] font-semibold text-[#3a3f48] transition-colors hover:bg-[#f6f7f9]"
-                  >
-                    Back
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {step === "done" && (
-              <div className="flex h-full flex-col items-center justify-center text-center">
-                <div className="grid h-[clamp(52px,9vh,68px)] w-[clamp(52px,9vh,68px)] place-items-center rounded-full bg-[#e6f6ea]">
-                  <svg viewBox="0 0 24 24" className="h-1/2 w-1/2 text-[#22a03f]" fill="none">
-                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-                <h2 className="mb-title mt-[clamp(12px,2vh,16px)] text-[#1e2129]">Transfer successful</h2>
-                <p className="mb-body mt-[6px] text-[#6b7280]">
-                  RM {fmt(amountNum)} sent to <span className="font-semibold text-[#20242c]">{recipient}</span>.
-                </p>
-
-                <div className="mt-[clamp(14px,2.4vh,18px)] w-full max-w-[380px] rounded-[12px] bg-[#f8f9fb] p-[clamp(14px,2.4vh,18px)] text-left">
-                  <ReviewRow label="Reference no." value="MB2U0918-77213" />
-                  <ReviewRow label="Date" value="18 Jul 2026, 11:42 am" />
-                  <ReviewRow label="From" value={from.label} />
-                </div>
-
-                <div className="mt-[clamp(16px,2.6vh,20px)] flex gap-[12px]">
-                  <button
-                    onClick={reset}
-                    className="mb-body rounded-[8px] bg-[#efab30] px-[24px] py-[clamp(10px,1.7vh,12px)] font-bold text-white transition-colors hover:bg-[#e59f20]"
-                  >
-                    Make another transfer
-                  </button>
-                  <Link
-                    href="/bank"
-                    className="mb-body rounded-[8px] border border-[#e2e5ea] bg-white px-[24px] py-[clamp(10px,1.7vh,12px)] text-center font-semibold text-[#3a3f48] transition-colors hover:bg-[#f6f7f9]"
-                  >
-                    Back to accounts
-                  </Link>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ── Sidebar ── */}
-          <aside className="flex min-h-0 flex-col gap-[clamp(14px,2vh,18px)]">
-            <div className="shrink-0 rounded-[12px] border border-[#edeff2] bg-white p-[clamp(16px,2.4vh,20px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)]">
-              <p className="mb-small text-[#6b7280]">Transferring from</p>
-              <p className="mb-body mt-[5px] font-bold text-[#1e2129]">{from.label}</p>
-              <p className="mb-small tracking-[0.4px] text-[#a2a8b0]">{from.number}</p>
-              <div className="mt-[clamp(10px,1.8vh,14px)] border-t border-[#eef0f3] pt-[clamp(10px,1.8vh,14px)]">
-                <p className="mb-small text-[#6b7280]">Available balance</p>
-                <p className="mb-balance-sm mt-[3px] text-[#22a03f]">RM {fmt(from.balance)}</p>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-hidden rounded-[12px] border border-[#edeff2] bg-white p-[clamp(16px,2.4vh,20px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)]">
-              <p className="mb-lg font-bold text-[#1e2129]">Favourites</p>
-              <ul className="mt-[clamp(8px,1.4vh,10px)] space-y-[clamp(4px,0.8vh,6px)]">
-                {FAVOURITES.map((f) => (
-                  <li key={f.account}>
+                  <div className="mt-[clamp(14px,2.4vh,18px)] flex flex-row-reverse gap-[12px]">
                     <button
-                      type="button"
-                      onClick={() => pickFavourite(f)}
-                      disabled={step !== "form"}
-                      className="flex w-full items-center gap-[11px] rounded-[10px] px-[8px] py-[clamp(6px,1.2vh,8px)] text-left transition-colors hover:bg-[#f6f7f9] disabled:opacity-50"
+                      onClick={attemptTransfer}
+                      disabled={submitting}
+                      className="mb-body flex-1 rounded-[8px] bg-[#efab30] py-[clamp(11px,1.9vh,13px)] font-bold text-white shadow-[0_10px_22px_-10px_rgba(239,171,48,0.95)] transition-colors hover:bg-[#e59f20] disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      <span className="mb-body grid h-[clamp(32px,5vh,38px)] w-[clamp(32px,5vh,38px)] shrink-0 place-items-center rounded-full bg-[#fef1d6] font-bold text-[#c78a12]">
-                        {f.name.split(" ").map((p) => p[0]).slice(0, 2).join("")}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="mb-body block truncate font-semibold text-[#20242c]">{f.name}</span>
-                        <span className="mb-xs block truncate text-[#8b9099]">
-                          {f.bank} · {f.account}
-                        </span>
-                      </span>
+                      {submitting ? (parentalEnabled ? "Running AI precheck…" : "Processing…") : "Confirm & Transfer"}
                     </button>
-                  </li>
-                ))}
-              </ul>
+                    <button
+                      onClick={() => setStep("form")}
+                      disabled={submitting}
+                      className="mb-body rounded-[8px] border border-[#e2e5ea] bg-white px-[28px] py-[clamp(11px,1.9vh,13px)] font-semibold text-[#3a3f48] transition-colors hover:bg-[#f6f7f9] disabled:opacity-50"
+                    >
+                      Back
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {step === "done" && (
+                <div className="flex h-full flex-col items-center justify-center text-center">
+                  <div className="grid h-[clamp(52px,9vh,68px)] w-[clamp(52px,9vh,68px)] place-items-center rounded-full bg-[#e6f6ea]">
+                    <svg viewBox="0 0 24 24" className="h-1/2 w-1/2 text-[#22a03f]" fill="none">
+                      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <h2 className="mb-title mt-[clamp(12px,2vh,16px)] text-[#1e2129]">Transfer successful</h2>
+                  <p className="mb-body mt-[6px] text-[#6b7280]">
+                    RM {fmt(amountNum)} sent to <span className="font-semibold text-[#20242c]">{recipient}</span>.
+                  </p>
+
+                  <div className="mt-[clamp(14px,2.4vh,18px)] w-full max-w-[380px] rounded-[12px] bg-[#f8f9fb] p-[clamp(14px,2.4vh,18px)] text-left">
+                    <ReviewRow label="New balance" value={`RM ${fmt(balance)}`} />
+                    <ReviewRow label="Payment Type" value={paymentType} />
+                    <ReviewRow label="From" value={fromLabel} />
+                  </div>
+
+                  <div className="mt-[clamp(16px,2.6vh,20px)] flex gap-[12px]">
+                    <button
+                      onClick={reset}
+                      className="mb-body rounded-[8px] bg-[#efab30] px-[24px] py-[clamp(10px,1.7vh,12px)] font-bold text-white transition-colors hover:bg-[#e59f20]"
+                    >
+                      Make another transfer
+                    </button>
+                    <Link
+                      href="/bank"
+                      className="mb-body rounded-[8px] border border-[#e2e5ea] bg-white px-[24px] py-[clamp(10px,1.7vh,12px)] text-center font-semibold text-[#3a3f48] transition-colors hover:bg-[#f6f7f9]"
+                    >
+                      Back to accounts
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {step === "rejected" && (
+                <div className="flex h-full flex-col items-center justify-center text-center">
+                  <div className="grid h-[clamp(52px,9vh,68px)] w-[clamp(52px,9vh,68px)] place-items-center rounded-full bg-[#fdeaea]">
+                    <svg viewBox="0 0 24 24" className="h-1/2 w-1/2 text-[#e0393e]" fill="none">
+                      <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <h2 className="mb-title mt-[clamp(12px,2vh,16px)] text-[#1e2129]">Transfer rejected</h2>
+                  <p className="mb-body mt-[6px] max-w-[440px] text-[#6b7280]">
+                    Our AI scam-guard stopped this RM {fmt(amountNum)} transfer to{" "}
+                    <span className="font-semibold text-[#20242c]">{recipient}</span>. Your balance is unchanged and no money has left your account.
+                  </p>
+
+                  {guardianPhone && (
+                    <div className="mt-[clamp(14px,2.4vh,18px)] flex w-full max-w-[440px] items-start gap-[12px] rounded-[12px] border border-[#f6e0bd] bg-[#fff7ea] p-[clamp(12px,2vh,16px)] text-left">
+                      <span className="mt-[1px] grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-[#efab30] text-white">
+                        <svg viewBox="0 0 24 24" className="h-[16px] w-[16px]" fill="none">
+                          <path d="M4 6h16v12H4zM4 7l8 6 8-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </span>
+                      <div>
+                        <p className="mb-body font-bold text-[#1e2129]">A trusted contact has been notified</p>
+                        <p className="mb-small mt-[2px] text-[#7a6a44]">
+                          We&apos;ve sent an SMS to your guardian at{" "}
+                          <span className="font-semibold text-[#5a4a1c]">{guardianPhone}</span> so a family member can help you check whether this transfer is genuine before you try again.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="mb-small mt-[clamp(12px,2vh,16px)] max-w-[440px] text-[#8b9099]">
+                    Believe this is a mistake? Please contact the Maybank Careline at{" "}
+                    <span className="font-semibold text-[#3a3f48]">1-300-88-6688</span> for assistance.
+                  </p>
+
+                  <div className="mt-[clamp(16px,2.6vh,20px)] flex gap-[12px]">
+                    <Link
+                      href="/bank"
+                      className="mb-body rounded-[8px] bg-[#1e2129] px-[24px] py-[clamp(10px,1.7vh,12px)] text-center font-bold text-white transition-colors hover:bg-[#2c303a]"
+                    >
+                      Back to accounts
+                    </Link>
+                    <button
+                      onClick={reset}
+                      className="mb-body rounded-[8px] border border-[#e2e5ea] bg-white px-[24px] py-[clamp(10px,1.7vh,12px)] font-semibold text-[#3a3f48] transition-colors hover:bg-[#f6f7f9]"
+                    >
+                      Try another transfer
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </aside>
+
+            {/* ── Sidebar ── */}
+            <aside className="flex min-h-0 flex-col gap-[clamp(14px,2vh,18px)]">
+              <div className="shrink-0 rounded-[12px] border border-[#edeff2] bg-white p-[clamp(16px,2.4vh,20px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)]">
+                <p className="mb-small text-[#6b7280]">Transferring from</p>
+                <p className="mb-body mt-[5px] font-bold text-[#1e2129]">{fromLabel}</p>
+                <p className="mb-small tracking-[0.4px] text-[#a2a8b0]">{account_no}</p>
+                <div className="mt-[clamp(10px,1.8vh,14px)] border-t border-[#eef0f3] pt-[clamp(10px,1.8vh,14px)]">
+                  <p className="mb-small text-[#6b7280]">Available balance</p>
+                  <p className="mb-balance-sm mt-[3px] text-[#22a03f]">{user ? `RM ${fmt(balance)}` : "RM ——"}</p>
+                </div>
+                {parentalEnabled && (
+                  <div className="mt-[clamp(10px,1.8vh,14px)] flex items-center gap-[8px] rounded-[8px] bg-[#fdf3e2] px-[10px] py-[8px]">
+                    <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-[#efab30] text-white">
+                      <svg viewBox="0 0 24 24" className="h-[13px] w-[13px]" fill="none">
+                        <path d="M12 3 5 6v6c0 4 3 6.5 7 9 4-2.5 7-5 7-9V6l-7-3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                    <span className="mb-xs font-semibold text-[#8a6516]">Parental control active — AI scam-guard on</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-hidden rounded-[12px] border border-[#edeff2] bg-white p-[clamp(16px,2.4vh,20px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)]">
+                <p className="mb-lg font-bold text-[#1e2129]">Favourites</p>
+                <ul className="mt-[clamp(8px,1.4vh,10px)] space-y-[clamp(4px,0.8vh,6px)]">
+                  {FAVOURITES.map((f) => (
+                    <li key={f.account}>
+                      <button
+                        type="button"
+                        onClick={() => pickFavourite(f)}
+                        disabled={step !== "form"}
+                        className="flex w-full items-center gap-[11px] rounded-[10px] px-[8px] py-[clamp(6px,1.2vh,8px)] text-left transition-colors hover:bg-[#f6f7f9] disabled:opacity-50"
+                      >
+                        <span className="mb-body grid h-[clamp(32px,5vh,38px)] w-[clamp(32px,5vh,38px)] shrink-0 place-items-center rounded-full bg-[#fef1d6] font-bold text-[#c78a12]">
+                          {f.name.split(" ").map((p) => p[0]).slice(0, 2).join("")}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="mb-body block truncate font-semibold text-[#20242c]">{f.name}</span>
+                          <span className="mb-xs block truncate text-[#8b9099]">
+                            {f.bank} · {f.account}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </aside>
+          </div>
         </div>
-      </div>
-    </MaybankChrome>
+      </MaybankChrome>
+
+      {halted && (
+        <HaltModal
+          reasons={reasons}
+          guardianPhone={guardianPhone}
+          callStatus={callStatus}
+          callError={callError}
+          transcript={transcript}
+          onRetryCall={() => guardianPhone && callVarsRef.current && placeVerificationCall(guardianPhone, callVarsRef.current)}
+          onClose={closeHalt}
+        />
+      )}
+    </>
   );
 }
+
+/* ── Halt / verification modal ─────────────────────────────────────────── */
+
+function HaltModal({
+  reasons,
+  guardianPhone,
+  callStatus,
+  callError,
+  transcript,
+  onRetryCall,
+  onClose,
+}: {
+  reasons: string[];
+  guardianPhone: string;
+  callStatus: CallStatus;
+  callError: string;
+  transcript: TranscriptEntry[];
+  onRetryCall: () => void;
+  onClose: () => void;
+}) {
+  const statusText: Record<CallStatus, string> = {
+    idle: "Preparing verification call…",
+    calling: `Calling ${guardianPhone}…`,
+    active: "Scam-guard is verifying with the guardian…",
+    ended: "Verification call ended",
+    error: "Call failed",
+  };
+  const dot: Record<CallStatus, string> = {
+    idle: "bg-[#9ca3af]",
+    calling: "bg-[#eab308]",
+    active: "bg-[#22c55e]",
+    ended: "bg-[#9ca3af]",
+    error: "bg-[#ef4444]",
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 p-[20px]">
+      <div className="w-full max-w-[480px] overflow-hidden rounded-[18px] bg-white shadow-[0_30px_80px_-20px_rgba(0,0,0,0.5)]">
+        {/* Header */}
+        <div className="flex items-start gap-[14px] bg-gradient-to-br from-[#e0393e] to-[#b5262b] px-[26px] py-[22px] text-white">
+          <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full bg-white/20">
+            <svg viewBox="0 0 24 24" className="h-[24px] w-[24px]" fill="none">
+              <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <div>
+            <h3 className="text-[19px] font-extrabold leading-tight">Transaction halted</h3>
+            <p className="mt-[3px] text-[13px] font-medium text-white/85">
+              An AI scam-guard is verifying this transfer before it can proceed.
+            </p>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="px-[26px] py-[22px]">
+          <p className="text-[12px] font-bold uppercase tracking-[0.6px] text-[#8b9099]">Why this was flagged</p>
+          <ul className="mt-[10px] space-y-[8px]">
+            {reasons.map((r, i) => (
+              <li key={i} className="flex items-start gap-[10px]">
+                <span className="mt-[2px] grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full bg-[#fdeaea] text-[#e0393e]">
+                  <svg viewBox="0 0 24 24" className="h-[12px] w-[12px]" fill="none">
+                    <path d="M12 8v5m0 3h.01" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                  </svg>
+                </span>
+                <span className="text-[14px] leading-snug text-[#20242c]">{r}</span>
+              </li>
+            ))}
+          </ul>
+
+          {/* Verification call */}
+          <div className="mt-[18px] rounded-[12px] border border-[#eef0f3] bg-[#f8f9fb] p-[16px]">
+            {guardianPhone ? (
+              <>
+                <div className="flex items-center gap-[9px]">
+                  <span className={`h-[9px] w-[9px] rounded-full ${dot[callStatus]} ${callStatus === "active" || callStatus === "calling" ? "animate-pulse" : ""}`} />
+                  <span className="text-[14px] font-bold text-[#1e2129]">{statusText[callStatus]}</span>
+                </div>
+                <p className="mt-[4px] text-[12.5px] text-[#8b9099]">
+                  Scam Guard AI is calling the guardian to confirm this transfer.
+                </p>
+                {callError && <p className="mt-[6px] text-[12.5px] font-medium text-[#e0393e]">{callError}</p>}
+
+                {transcript.length > 0 && (
+                  <div className="mt-[12px] max-h-[150px] space-y-[8px] overflow-y-auto">
+                    {transcript.map((t, i) => (
+                      <div key={i} className={`flex ${t.role === "ai" ? "justify-start" : "justify-end"}`}>
+                        <div
+                          className={`max-w-[85%] rounded-[12px] px-[11px] py-[7px] text-[12.5px] leading-snug ${
+                            t.role === "ai" ? "bg-white text-[#20242c] shadow-sm" : "bg-[#1273e8] text-white"
+                          }`}
+                        >
+                          {t.message}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-[13px] text-[#8a6516]">
+                No guardian phone number is set. Add one in{" "}
+                <Link href="/settings" className="font-bold underline">
+                  Settings → Parental Control
+                </Link>{" "}
+                to enable verification calls.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-[10px] border-t border-[#eef0f3] px-[26px] py-[16px]">
+          {guardianPhone && (callStatus === "error" || callStatus === "ended") && (
+            <button
+              onClick={onRetryCall}
+              className="rounded-[8px] border border-[#e2e5ea] bg-white px-[18px] py-[10px] text-[14px] font-semibold text-[#3a3f48] transition-colors hover:bg-[#f6f7f9]"
+            >
+              Call again
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="rounded-[8px] bg-[#1e2129] px-[22px] py-[10px] text-[14px] font-bold text-white transition-colors hover:bg-[#2c303a]"
+          >
+            Cancel transfer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Field helpers ──────────────────────────────────────────────────────── */
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

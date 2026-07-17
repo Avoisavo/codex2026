@@ -1,7 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MaybankChrome } from "../components/maybank/MaybankChrome";
+
+const USER_ID = "u_danial";
+
+const fmtAmount = (n: number) => n.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const parseAmount = (s: string) => Number(String(s).replace(/[^0-9.]/g, "")) || 0;
 
 export default function SettingsPage() {
   // Basic banking settings
@@ -22,7 +27,43 @@ export default function SettingsPage() {
   const [smsPhone, setSmsPhone] = useState("");
   const [saved, setSaved] = useState(false);
 
-  const save = () => {
+  // Load persisted parental control from the JSON store.
+  useEffect(() => {
+    fetch(`/api/users/${USER_ID}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((u) => {
+        if (!u || u.error) return;
+        const pc = u.parentalControl ?? {};
+        setParentalOn(!!pc.enabled);
+        if (typeof pc.transactionLimit === "number") setTxnLimit(fmtAmount(pc.transactionLimit));
+        if (typeof pc.dailyFrequencyLimit === "number") setDailyFreq(String(pc.dailyFrequencyLimit));
+        if (typeof pc.monthlyMaxAmount === "number") setMonthlyMax(fmtAmount(pc.monthlyMaxAmount));
+        if (typeof pc.smsPhone === "string") setSmsPhone(pc.smsPhone);
+      })
+      .catch(() => {});
+  }, []);
+
+  const patchParental = (partial: Record<string, unknown>) =>
+    fetch(`/api/users/${USER_ID}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ parentalControl: partial }),
+    }).catch(() => {});
+
+  // Enabling/disabling parental control persists immediately.
+  const toggleParental = (next: boolean) => {
+    setParentalOn(next);
+    patchParental({ enabled: next });
+  };
+
+  const save = async () => {
+    await patchParental({
+      enabled: true,
+      transactionLimit: parseAmount(txnLimit),
+      dailyFrequencyLimit: parseInt(dailyFreq || "0", 10) || 0,
+      monthlyMaxAmount: parseAmount(monthlyMax),
+      smsPhone,
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2200);
   };
@@ -113,7 +154,7 @@ export default function SettingsPage() {
                   <path d="m9 12 2 2 4-4" stroke="currentColor" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </>
               }
-              action={<Switch on={parentalOn} onChange={setParentalOn} />}
+              action={<Switch on={parentalOn} onChange={toggleParental} />}
             >
               {parentalOn ? (
                 <div>

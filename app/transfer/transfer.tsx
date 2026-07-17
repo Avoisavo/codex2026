@@ -37,6 +37,16 @@ const fmt = (n: number) =>
 
 const norm = (s: string) => s.replace(/\s/g, "");
 
+// Normalise a phone number to E.164 (Malaysia-aware) so the outbound call dials correctly.
+// "+60 12-345 6789" → "+60123456789"; "012-345 6789" → "+60123456789".
+function toE164(raw: string): string {
+  const s = raw.replace(/[^\d+]/g, "");
+  if (s.startsWith("+")) return s;
+  if (s.startsWith("60")) return "+" + s;
+  if (s.startsWith("0")) return "+60" + s.slice(1);
+  return s ? "+" + s : s;
+}
+
 // Read the agent's final APPROVED / BLOCKED decision out of its spoken messages.
 // The agent is instructed to use the words APPROVED / BLOCKED only in its final
 // line, so we scan newest-first and match on those words alone (BLOCKED wins ties).
@@ -307,7 +317,7 @@ export default function TransferPage() {
       const res = await fetch("/api/call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to_number: phone, dynamic_variables: vars }),
+        body: JSON.stringify({ to_number: toE164(phone), dynamic_variables: vars }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -768,7 +778,7 @@ function HaltModal({
   const statusText: Record<CallStatus, string> = {
     idle: "Preparing verification call…",
     calling: `Calling ${guardianPhone}…`,
-    active: "Scam-guard is verifying with the guardian…",
+    active: "Scam-guard is verifying…",
     ended: "Verification call ended",
     error: "Call failed",
   };

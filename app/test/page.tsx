@@ -24,8 +24,11 @@ export default function TestPage() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
+  const [endReason, setEndReason] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevTranscriptLenRef = useRef(0);
+  const aiWaitingSinceRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -40,17 +43,54 @@ export default function TestPage() {
     }
   }, []);
 
+  const SILENCE_TIMEOUT = 15_000;
+
   const startPolling = useCallback(
     (convId: string) => {
       stopPolling();
+      prevTranscriptLenRef.current = 0;
+      aiWaitingSinceRef.current = null;
+
       pollRef.current = setInterval(async () => {
         try {
           const res = await fetch(`/api/transcript?id=${convId}`);
           if (!res.ok) return;
           const data = await res.json();
+
           if (data.transcript && data.transcript.length > 0) {
+            if (data.transcript.length > prevTranscriptLenRef.current) {
+              const newEntries = data.transcript.slice(
+                prevTranscriptLenRef.current
+              );
+              prevTranscriptLenRef.current = data.transcript.length;
+
+              const hasNewUserMsg = newEntries.some(
+                (e: TranscriptEntry) => e.role === "user"
+              );
+              if (hasNewUserMsg) {
+                aiWaitingSinceRef.current = null;
+              }
+
+              const lastEntry =
+                data.transcript[data.transcript.length - 1];
+              if (lastEntry.role === "ai" && !hasNewUserMsg) {
+                aiWaitingSinceRef.current = Date.now();
+              }
+            }
+
+            if (
+              aiWaitingSinceRef.current !== null &&
+              Date.now() - aiWaitingSinceRef.current > SILENCE_TIMEOUT
+            ) {
+              setEndReason("No response for 15 seconds - call auto-ended");
+              setCallStatus("ended");
+              stopPolling();
+              return;
+            }
+
             setTranscript(data.transcript);
           }
+
           if (data.status === "done") {
             setCallStatus("ended");
             stopPolling();
@@ -74,6 +114,7 @@ export default function TestPage() {
     setCallStatus("calling");
     setTranscript([]);
     setErrorMsg("");
+    setEndReason("");
     setConversationId(null);
 
     try {
@@ -115,6 +156,7 @@ export default function TestPage() {
     setTranscript([]);
     setConversationId(null);
     setErrorMsg("");
+    setEndReason("");
   }, [stopPolling]);
 
   const isIdle = callStatus === "idle" || callStatus === "error";
@@ -187,7 +229,7 @@ export default function TestPage() {
             : isCalling
               ? `Ringing ${phoneNumber}...`
               : isEnded
-                ? "Call ended"
+                ? endReason || "Call ended"
                 : callStatus === "error"
                   ? "Call failed"
                   : "Enter phone number to start"}

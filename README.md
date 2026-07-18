@@ -1,236 +1,237 @@
-# Scam Guard — AI-verified bank transfers
+# Scam Guard
 
-**Verified before it's gone.**
+> **The agents investigate. The graph remembers. The user learns.**
 
-Scam Guard is a Maybank2u-style banking app with an AI guardian that steps in at the
-**moment of a transfer** — before the money leaves the account. When a family enables
-parental control, every outgoing transfer is screened, and anything risky triggers a
-real-time **AI phone call** that talks to the user, decides whether it's a scam, and
-**blocks or approves** the transfer based on the conversation.
+Scam Guard is a hackathon prototype for safer bank transfers. It creates a calm pause when a payment looks unusual, explains the warning signs, offers an account-holder verification conversation, and holds protected transfers for a separate trusted-contact decision.
 
-Built at an OpenAI hackathon with **OpenAI Codex** and **GPT-5.6**.
+The visible bank is **NusaSafe Bank**, an explicitly fictional brand. This repository is a product simulation—not a bank, fraud-verification service, or production authentication system.
 
----
+## Product promise
 
-## The problem
+**Scam Guard is a pause button for the moment when emotion takes over.**
 
-In Malaysia, scammers move faster than families can react. The elderly are prime targets,
-transfers are instant and irreversible, and scam tactics (loan scams, impersonation, fake
-investments) evolve every week — faster than any parent can keep up with. Today's
-protection is reactive; the money is already gone by the time anyone finds out.
+The prototype combines:
 
-## What it does
+- transaction and configurable-limit signals;
+- four contextual questions about urgency, secrecy, promised rewards, and device access;
+- a simulated specialist-agent trace with one orchestrated recommendation;
+- a privacy-safe Scam Link Map backed by a governed knowledge graph;
+- an optional, user-requested voice verification call with a temporary safety phrase;
+- transaction-bound trusted approval that is separate from every banking OTP, TAC, PIN, or Secure2u approval;
+- short, contextual scam education and safe next steps.
 
-Scam Guard adds a live, human-in-the-loop verification layer at the point of no return.
+AI and graph findings are advisory. They never release money and never make an irreversible fraud verdict.
 
-- **My Accounts** (`/bank`) — balance, money-in/out, spending insights, live transaction
-  history, and a promo carousel.
-- **Pay & Transfer** (`/transfer`) — a full transfer flow with an AI pre-check and
-  verification call when parental control is on.
-- **Settings** (`/settings`) — security, notifications, and **Parental Control** (limits +
-  guardian phone) that persists to the store.
+## Implemented journeys
 
-## How it works
+| Route | What is implemented |
+|---|---|
+| `/bank` | Responsive fictional banking dashboard and transaction history |
+| `/transfer` | Normal transfers plus the fully wired protected-transfer journey |
+| `/settings` | Explicit account-holder consent, limits, privacy choices, and separate trusted contacts |
+| `/family-guard` | Contact-scoped pending/history review with approve, reject, report, call, or bank-review actions |
+| `/scam-safety` | Six short lessons, quick questions, Semak Mule, and urgent NSRC guidance |
+| `/intelligence` | An isolated seven-agent shadow lab and synthetic knowledge-graph pipeline |
+| `/test` | Consent-gated standalone voice-call test; it cannot affect a transfer |
 
-1. **Children set up parental control** for their parent's account (transaction limit,
-   daily frequency, monthly cap, guardian phone).
-2. **Every transfer is pre-checked** against risk criteria — the first layer of protection:
-   - amount over the transaction limit,
-   - recipient on the bank's suspicious/mule-account list,
-   - a new/unknown payee not in the transfer history.
-3. If flagged, the app shows an **"AI Scam Guard analyzing…"** modal, then places a
-   **phone call** to the guardian via ElevenLabs + Twilio, passing the full transaction
-   context (amount, recipient, why it was flagged) as dynamic variables.
-4. The agent confirms the transfer, verifies purpose and relationship, checks for pressure,
-   and reaches a clear decision.
-5. **Block or approve** based on the user's context:
-   - **APPROVED** → balance is deducted, a transaction is logged, transfer recorded →
-     *Transfer successful*.
-   - **BLOCKED** → nothing is sent, a blocked attempt is recorded, an SMS notice goes to the
-     guardian → *Transfer rejected*.
-6. Every verification call is appended to `transcript.txt` with timestamps.
+## Two-layer protection flow
+
+```text
+Account holder enters transfer
+        ↓
+Server freezes the exact recipient, amount and reference
+        ↓
+Transaction + context + graph signals are explained
+        ↓
+Account holder requests a safe call or uses the deterministic demo assessment
+        ↓
+AI records a recommendation only—no balance change
+        ↓
+Trusted contact reviews the exact protected request
+        ↓
+Approve low/uncertain risk, reject, report, or request bank review
+        ↓
+Only a valid transaction-bound low/uncertain approval can release funds
+```
+
+Important state-machine rules:
+
+- Family Guard must be enabled by the account holder with current consent.
+- A normal transfer still uses the atomic server transfer seam; the browser cannot patch balances.
+- Creating a protected request or recording AI verification never debits the account.
+- The trusted-contact code is salted and hashed at rest and bound to the frozen request.
+- Changing the recipient or amount requires a new request and code.
+- High-risk approval attempts go to `bank_review`; they do not release money.
+- A `bank_verified` suspicious-account match is a hard block.
+- Requests expire safely if nobody decides in time.
+- Replayed or stale decisions fail through optimistic version checks.
+- A trusted contact sees only assigned protected transfers, not full account history.
+
+## Simulated agent swarm
+
+The user interacts with one calm Scam Guard assistant. Internally, the hackathon simulation presents seven roles:
+
+1. **Transaction Agent** — new recipient, amount, frequency, limits, and behavioural differences.
+2. **Conversation Agent** — urgency, secrecy, fear, rewards, authority, and remote-access requests.
+3. **Entity Agent** — account, phone, and website clues with masked presentation.
+4. **Graph Agent** — repeated connections to earlier governed cases.
+5. **Scam Pattern Agent** — investment, impersonation, job, loan, and related patterns.
+6. **Education Agent** — converts evidence into simple explanations and safe actions.
+7. **Orchestrator** — recommends low risk, uncertain, or high risk.
+
+These roles are deterministic tools and prompts for the demo, not seven separately trained models. The dedicated `/intelligence` lab remains isolated and unenforced.
+
+## Knowledge graph and learning loop
+
+The live Family Guard graph stores masked display values and SHA-256 fingerprints rather than raw account/phone identifiers. Its logical data model is:
+
+```text
+entities · relationships · cases · signals
+```
+
+The seeded Quick Cash scenario connects a WhatsApp number, an example investment website, recipient account `•••• 3321`, a scam pattern, and two synthetic prior reports.
+
+Evidence is governed as `observed`, `potentially_suspicious`, `user_reported`, `corroborated`, `bank_verified`, or `cleared`. Automated code cannot assign `bank_verified` or `cleared`. A missing graph match is never presented as proof that a recipient is safe.
+
+When the account holder has opted into intelligence feedback, a terminal outcome is written to a durable outbox and then idempotently added to the live graph. Only consented outcomes participate; cancelling or merely pausing a transfer is not treated as confirmed fraud.
+
+See [Family Guard intelligence](docs/family-guard-intelligence.md) and the [isolated intelligence lab](docs/intelligence-lab.md).
+
+## Privacy and safe-call design
+
+- A call starts only after an explicit request and voice-consent setting.
+- It calls the configured **account-holder** number, not the trusted contact.
+- The in-app safety phrase must be repeated by the caller.
+- The call begins with a warning that it will never request a password, PIN, OTP, TAC, or Secure2u approval.
+- Raw account numbers are discarded at the call boundary; the provider receives only a masked suffix and allowlisted context.
+- Provider transcripts are redacted before reaching the UI.
+- Local transcript storage can be off, summary-only, or redacted with 1–30 day retention.
+- The legacy permanent `transcript.txt` store has been removed.
+
+The deterministic assessment keeps the hackathon demo usable without voice credentials and is clearly labelled as a simulation.
+
+## Quick demo
+
+1. Run the app and open `/settings`.
+2. Accept the account-holder consent notice, add the account-holder phone, configure the three limits, and enable Family Guard.
+3. Add an accepted trusted contact such as **Sarah Tan**. For this local demo, accepted means the invitation step has been simulated.
+4. On `/transfer`, press **Space** or choose **Fill demo transfer**.
+5. Review the RM10,000 Quick Cash payment. The contextual answers are prefilled with WhatsApp investment-group pressure, secrecy, guaranteed returns, and the example graph entities.
+6. Review the agent trace, warning signs, and Scam Link Map.
+7. Use the deterministic demo assessment, or request a configured verification call.
+8. Open `/family-guard`. The transaction-bound demo code is `4821` unless `FAMILY_GUARD_DEMO_APPROVAL_CODE` overrides it.
+9. Because the scenario is high risk, the dashboard offers bank review, reject, and report—not one-tap release.
+
+For a release-path contrast, use an unflagged recipient, a small amount, calm context, a `low_risk` demo recommendation, and trusted approval.
+
+See the detailed [demo script](docs/demo-script-block.md) and [voice-agent prompt](docs/scam-guard-agent.md).
+
+## Scam education and Malaysian help
+
+The Scam Safety page covers WhatsApp/SMS, calls, social media, marketplaces, job offers, and fake apps/sites. It links to the official [PDRM Semak Mule portal](https://semakmule.rmp.gov.my/) and [NSRC information](https://nfcc.jpm.gov.my/index.php/en/about-nsrc).
+
+If money has already been sent, the UI tells the user to contact their bank immediately and call Malaysia’s NSRC at **997** during its published operating hours.
 
 ## Tech stack
 
-- **Next.js 16** (App Router, Turbopack) · **React 19** · **TypeScript** · **Tailwind CSS v4**
-- **OpenAI GPT-5.6** — the phone verification agent (reasoning over the live conversation)
-- **ElevenLabs** — real-time TTS and voice for the outbound call
-- **Twilio** — real-time phone calling / call routing
-- **OpenAI GPT-5.6** — knowledge indexing and continuous improvement of scam heuristics
-- **Databricks** — SQL warehouse for the data pipeline (mirrored behind a fast local store)
+- Next.js 16.2 App Router, React 19, TypeScript, Tailwind CSS v4
+- Local atomic JSON source of truth with optional Databricks mirroring
+- ElevenLabs Conversational AI outbound-call endpoint with a connected Twilio number
+- Deterministic multi-agent and graph simulation for explainability
 
-## Data layer (hybrid store)
+The voice provider can use its configured conversational model; this repository does not hard-code or claim a specific LLM version.
 
-Reads/writes go through a hybrid store so the demo can never break:
-
-- **Local JSON** (`data/db.json`) is the source of truth — instant reads/writes, auto-seeded.
-- **Databricks** is a best-effort mirror, toggled by `DATABRICKS_MIRROR` (off by default).
-  Writes are fire-and-forget; a slow/cold warehouse never blocks the UI.
-
-Three collections: **users** (balance, parental control, transaction history), **transfers**
-(every executed/blocked transfer), and **suspicious_accounts** (the flagged-account list).
-
-## Getting started
-
-### Prerequisites
-
-- Node.js 18+
-- An [ElevenLabs](https://elevenlabs.io) Conversational AI agent (published) with a Twilio
-  phone number attached
-- (Optional) A [Databricks](https://databricks.com) SQL warehouse for the cloud mirror
-
-### Setup
+## Local setup
 
 ```bash
-git clone <repo-url>
-cd codex2026
 npm install
+npm run dev
 ```
 
-Create `.env.local` in the project root:
+Open [http://localhost:3000/bank](http://localhost:3000/bank).
+
+Optional `.env.local` values:
 
 ```env
-# ElevenLabs + Twilio (voice verification call)
+# Voice verification (optional; deterministic demo works without these)
 NEXT_PUBLIC_ELEVENLABS_AGENT_ID=your_agent_id
 ELEVENLABS_API_KEY=your_api_key
-ELEVENLABS_PHONE_NUMBER_ID=your_twilio_number_id_in_elevenlabs
+ELEVENLABS_PHONE_NUMBER_ID=your_connected_phone_number_id
 
-# Databricks (optional cloud mirror — app runs fine without it)
+# Optional Databricks mirror
 DATABRICKS_SERVER_HOSTNAME=your-workspace.cloud.databricks.com
 DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/xxxxxxxx
 DATABRICKS_TOKEN=your_pat
 DATABRICKS_CATALOG=workspace
 DATABRICKS_SCHEMA=banking_app
 DATABRICKS_MIRROR=off
+
+# Optional test/demo overrides
+FAMILY_GUARD_DEMO_APPROVAL_CODE=4821
+SCAM_GUARD_DB_FILE=/absolute/path/to/isolated-db.json
+SCAM_GUARD_LIVE_GRAPH_FILE=/absolute/path/to/isolated-graph.json
+SCAM_GUARD_TRANSCRIPT_FILE=/absolute/path/to/isolated-transcripts.json
 ```
 
-### Obtaining the API keys
+For ElevenLabs, publish an agent using [the safe prompt](docs/scam-guard-agent.md), connect a voice-capable Twilio number, then copy the IDs into the environment variables. Trial calling restrictions are controlled by the provider.
 
-#### ElevenLabs — voice agent (required)
+## Data and persistence
 
-1. Create an account at [elevenlabs.io](https://elevenlabs.io).
-2. **API key** → click your profile (bottom-left) → **API Keys** → **Create Key** → copy it
-   into `ELEVENLABS_API_KEY`.
-3. **Agent** → **Conversational AI → Agents → Create agent**. Paste the system prompt and
-   first message from [`docs/scam-guard-agent.md`](docs/scam-guard-agent.md), pick an LLM and
-   a voice, add the 9 dynamic variables (with default values), then **Publish**. Copy the
-   **Agent ID** (shown on the agent page / in the URL) into `NEXT_PUBLIC_ELEVENLABS_AGENT_ID`.
-   > Publishing matters — outbound calls always use the **last published** version.
-4. **Phone number** → **Conversational AI → Phone Numbers → Import number** and connect your
-   Twilio number (see below). Copy the resulting **Phone Number ID** into
-   `ELEVENLABS_PHONE_NUMBER_ID`, and attach the number to your agent for outbound calls.
+`data/db.json` is migrated non-destructively to schema v2 and contains:
 
-#### Twilio — phone calling (required, connected through ElevenLabs)
+- users and transaction history;
+- transfers and suspicious-account evidence;
+- Family Guard settings and contacts;
+- approval requests and verification sessions;
+- audit events and consented intelligence-feedback outbox entries.
 
-1. Create an account at [twilio.com](https://www.twilio.com).
-2. On the Console dashboard, copy your **Account SID** and **Auth Token**.
-3. **Phone Numbers → Buy a number** — pick one with **Voice** capability.
-4. Use that number + SID + Auth Token when importing into ElevenLabs (step 4 above).
-   > Trial accounts can only call **verified** numbers — add your test phone under
-   > [Verified Caller IDs](https://console.twilio.com/us1/develop/phone-numbers/manage/verified).
+`data/intelligence.json` belongs only to the isolated shadow lab. `data/family-guard-intelligence.json` is the separate live advisory graph. Redacted retained transcripts use `data/transcripts.json` only when that privacy option is enabled.
 
-#### Databricks — cloud mirror (optional)
+Writes use an in-process lock plus temporary-file rename. Corrupt JSON is not silently overwritten. Databricks is a best-effort mirror and never becomes the authority for release decisions.
 
-The app runs fully on the local JSON store, so this is optional.
+## Main APIs
 
-1. In your workspace, open **SQL Warehouses → (your warehouse) → Connection details**.
-2. Copy **Server hostname** → `DATABRICKS_SERVER_HOSTNAME` and **HTTP path** →
-   `DATABRICKS_HTTP_PATH`.
-3. Create a **personal access token**: **Settings → Developer → Access tokens → Generate** →
-   `DATABRICKS_TOKEN`.
-4. Set `DATABRICKS_CATALOG` to a catalog you can write to. Run `SHOW CATALOGS` in a SQL editor
-   to check — `main` may not exist; `workspace` usually does. Set `DATABRICKS_SCHEMA` to any
-   name (it's created for you).
-5. Keep `DATABRICKS_MIRROR=off` for the fast local-only experience; set it to `on` only if you
-   want the (slower, cold-start) cloud sync.
+| Route | Methods | Purpose |
+|---|---|---|
+| `/api/users/[id]` | GET | Read the demo account; direct balance PATCH is intentionally unavailable |
+| `/api/transfers` | GET | Read transfer history; direct transfer POST is intentionally unavailable |
+| `/api/family-guard/settings/[userId]` | GET, PATCH | Account-holder consent, limits, phone, and privacy |
+| `/api/family-guard/contacts` | GET, POST | List/add trusted contacts |
+| `/api/family-guard/contacts/[id]` | PATCH, DELETE | Update or revoke a trusted contact |
+| `/api/family-guard/requests` | GET, POST | Scoped requests and atomic transfer entry point |
+| `/api/family-guard/requests/[id]` | GET, DELETE | Refresh or safely cancel a pending request |
+| `/api/family-guard/requests/[id]/verification` | POST | Record advisory AI result; never releases money |
+| `/api/family-guard/requests/[id]/decision` | POST | Transaction-bound trusted decision |
+| `/api/intelligence/lookup` | GET | Advisory masked graph lookup |
+| `/api/intelligence` | GET, POST | Run/reset the isolated shadow lab |
+| `/api/call` | POST | Consent-gated, allowlisted outbound verification call |
+| `/api/transcript` | GET | Fetch and redact a provider transcript |
+| `/api/transcripts` | POST, DELETE | Retain or delete time-limited redacted transcript data |
 
-### Run the app
+All sensitive dynamic routes return `Cache-Control: no-store`.
+
+## Validation
 
 ```bash
-npm run dev
+npm run lint
+npm run build
 ```
 
-Then:
+The integration suite used isolated file overrides to verify:
 
-1. Open [http://localhost:3000/bank](http://localhost:3000/bank).
-2. In **Settings → Parental Control**, turn it on and set your **real phone number** as the
-   guardian (any format — it's normalized to E.164). Save.
-3. On **/transfer**, press **Space** to autofill a flagged transfer → **Continue** →
-   **Confirm & Transfer** → your phone rings for verification.
+- normal transfer completion when Family Guard is off;
+- no debit at protected-request creation or AI verification;
+- invalid guardian code rejection;
+- high-risk approval routing to bank review without debit;
+- low-risk trusted approval debiting exactly once;
+- stale decision replay rejection;
+- consented feedback processing and idempotent graph learning;
+- legacy direct user/transfer write endpoints returning `405`.
 
-> The local JSON store seeds itself, so the app works out of the box. To (re)seed or reset:
-> `curl -X POST "http://localhost:3000/api/db/init?reset=true"`.
+## Production gaps
 
-## Demo shortcut
-
-On `/transfer`, pressing **Space** (when not typing in a field) autofills the flagged
-scenario: recipient *Quick Cash Enterprise*, account `8842 1190 3321` (seeded as suspicious),
-RM 10,000. See [`docs/demo-script-block.md`](docs/demo-script-block.md) for the call script
-and [`docs/scam-guard-agent.md`](docs/scam-guard-agent.md) for the agent prompt.
-
-## Project structure
-
-```
-app/
-  bank/            # My Accounts — balance, transactions, spending, carousel
-  transfer/        # Pay & Transfer — pre-check, analyzing modal, verification call
-  settings/        # Security, notifications, parental control
-  components/maybank/   # Shared chrome, card modules, ad carousel
-  api/
-    users/         # GET/POST users, GET/PATCH /[id]
-    transfers/     # GET/POST executed & blocked transfers
-    suspicious/    # GET (list/check), POST, DELETE flagged accounts
-    transcripts/   # POST — append a call transcript to transcript.txt
-    call/          # POST — ElevenLabs + Twilio outbound call (dynamic variables)
-    transcript/    # GET — live call transcript from ElevenLabs
-    db/init/       # POST — create/seed the hybrid store (?reset=true)
-lib/
-  store.ts         # Hybrid orchestrator (JSON-first reads, best-effort DB mirror)
-  jsonStore.ts     # Local JSON persistence with a write-lock
-  databricks.ts    # Databricks SQL client + high-level data access
-  types.ts         # Domain types + seed data
-docs/              # Agent prompt + demo scripts
-```
-
-## API routes
-
-| Route | Method | Description |
-|---|---|---|
-| `/api/db/init` | POST | Create + seed the store (`?reset=true` wipes & reseeds) |
-| `/api/users` · `/api/users/[id]` | GET/POST · GET/PATCH | Read/update balance, parental control, transactions |
-| `/api/transfers` | GET/POST | List / record executed & blocked transfers |
-| `/api/suspicious` | GET/POST/DELETE | List, check `?account=`, flag, or remove |
-| `/api/call` | POST | Trigger the ElevenLabs + Twilio verification call with `dynamic_variables` |
-| `/api/transcript` | GET | Live transcript for a `conversation_id` |
-| `/api/transcripts` | POST | Append a completed call transcript to `transcript.txt` |
-
-## Built with OpenAI Codex
-
-This project was built end-to-end at an OpenAI hackathon with **Codex** (GPT-5.6) as an
-agentic pair programmer. Codex didn't just autocomplete — it read the codebase, ran
-commands, verified its own work with screenshots, and iterated. Where it accelerated the
-build the most:
-
-- **UI from a screenshot to pixels.** Starting from a Maybank2u reference image, Codex
-  built the `/bank`, `/transfer`, and `/settings` pages and iterated on layout, spacing, and
-  a fluid 16:9 no-scroll system with `clamp()`-based responsive typography — capturing
-  headless-browser screenshots each pass to self-correct instead of guessing.
-- **Whole features, wired.** It scaffolded the pages, API routes, and a hybrid
-  JSON + Databricks data layer, then connected the frontend to it (balance, live transaction
-  history, persisted parental control) in a single pass.
-- **The scam-guard flow, end to end.** Codex wired the pre-check → analyzing modal →
-  ElevenLabs/Twilio call → transcript-based **APPROVED/BLOCKED** verdict → block/approve
-  outcome, including passing the transaction context to the agent as dynamic variables and
-  saving transcripts to disk.
-- **Real debugging, not just generation.** When Databricks cold-starts made every request
-  take 20–60s, Codex diagnosed it from the dev-server logs and refactored the store so the
-  cloud mirror is fire-and-forget and off by default — dropping response times to
-  single-digit milliseconds.
-- **Docs, prompts, and glue.** It wrote the ElevenLabs system prompt, the demo call scripts,
-  the phone-number normalization, the Space-to-autofill demo shortcut, and this README.
-
-The result: a working, demo-ready product — front end, data pipeline, and a live AI voice
-verification loop — built in hours instead of days.
+This is intentionally a hackathon simulation. A real banking deployment still requires authenticated account-holder/guardian identities, device binding and biometrics, signed provider webhooks, rate limiting, notification delivery, bank-operated evidence review, legal/privacy review, audit retention policy, recovery workflows, and institution-controlled integration with payment rails.
 
 ## License
-Private Project
+
+Private project.

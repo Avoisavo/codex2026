@@ -8,15 +8,18 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "eWallet",
-  description: "Wallet demo with an AI scam-guard on outgoing transfers",
+  title: {
+    default: "NusaSafe Bank — Scam Guard Demo",
+    template: "%s | NusaSafe Bank Demo",
+  },
+  description:
+    "An explicitly fictional hackathon banking prototype that demonstrates explainable scam-safety support.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1273e8",
+  themeColor: "#0b3b4b",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({

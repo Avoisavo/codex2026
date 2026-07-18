@@ -14,14 +14,23 @@ body {
   height: 100%;
 }
 
-/* ── Maybank2u fluid stage ──────────────────────────────────────────────
-   The whole UI fills the viewport (100vw x 100dvh) with no scrolling.
-   Type and spacing scale with viewport height via clamp(), so everything
-   stays proportionate and bounded across screens — never tiny, never huge. */
+/* ── NusaSafe Bank prototype stage ─────────────────────────────────────
+   The shell stays within the viewport while its main region scrolls. This
+   preserves the compact desktop dashboard and keeps longer safety content
+   reachable on short screens and mobile devices. */
 .mb-stage {
-  width: 100vw;
+  width: 100%;
   height: 100dvh;
   overflow: hidden;
+}
+
+.bank-nav {
+  scrollbar-width: none;
+  overscroll-behavior-inline: contain;
+}
+
+.bank-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .mb-h1 {
@@ -80,11 +89,16 @@ body {
 
 body {
   margin: 0;
-  background: #d7d9e0;
+  background: #e5eceb;
   color: var(--color-tng-ink);
   font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 3px solid #5ee2bd;
+  outline-offset: 3px;
 }
 
 /* Blue -> purple wash behind the status bar, search and balance. */
@@ -176,4 +190,15 @@ body {
 }
 .tng-ping {
   animation: tng-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

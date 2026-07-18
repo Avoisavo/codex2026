@@ -20,6 +20,7 @@ type CallStatus = "idle" | "calling" | "active" | "ended" | "error";
 
 export default function TestPage() {
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [callConsent, setCallConsent] = useState(false);
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
@@ -121,7 +122,14 @@ export default function TestPage() {
       const res = await fetch("/api/call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to_number: cleaned }),
+        body: JSON.stringify({
+          to_number: cleaned,
+          consent: callConsent,
+          dynamic_variables: {
+            safety_phrase: "Yellow Tiger",
+            context_summary: "Standalone voice-safety test. No transfer can be released from this screen.",
+          },
+        }),
       });
 
       const data = await res.json();
@@ -139,11 +147,11 @@ export default function TestPage() {
       setConversationId(data.conversation_id);
       setCallStatus("active");
       startPolling(data.conversation_id);
-    } catch (err) {
+    } catch {
       setErrorMsg("Network error - make sure the dev server is running.");
       setCallStatus("error");
     }
-  }, [phoneNumber, startPolling]);
+  }, [callConsent, phoneNumber, startPolling]);
 
   const handleHangUp = useCallback(() => {
     stopPolling();
@@ -157,6 +165,7 @@ export default function TestPage() {
     setConversationId(null);
     setErrorMsg("");
     setEndReason("");
+    setCallConsent(false);
   }, [stopPolling]);
 
   const isIdle = callStatus === "idle" || callStatus === "error";
@@ -245,9 +254,9 @@ export default function TestPage() {
               Transaction Verification
             </p>
             <p className="mt-[8px] text-center text-[13px] leading-[1.5] text-[#6b7280]">
-              Enter a phone number and press call. The AI Scam Guard will call
-              that number and verify the transaction. The transcript appears here
-              in real time.
+              Enter the account holder&apos;s phone number and explicitly consent to
+              start a test call. The AI gives safety recommendations only; it
+              cannot approve, execute, or release a transfer.
             </p>
             {errorMsg && (
               <div className="mt-[16px] rounded-[12px] bg-[#fef2f2] px-[16px] py-[12px]">
@@ -338,6 +347,18 @@ export default function TestPage() {
                 </button>
               )}
             </div>
+            <label className="mt-[10px] flex cursor-pointer items-start gap-[9px] rounded-[12px] border border-[#dfe4ea] bg-[#f8fafc] px-[12px] py-[10px]">
+              <input
+                type="checkbox"
+                checked={callConsent}
+                onChange={(event) => setCallConsent(event.target.checked)}
+                className="mt-[2px] h-[16px] w-[16px] accent-[#1273e8]"
+              />
+              <span className="text-[11px] leading-[1.45] text-[#5e6875]">
+                I consent to this verification test call. It will never ask for
+                a password, PIN, OTP, TAC, or Secure2u approval.
+              </span>
+            </label>
           </div>
         )}
 
@@ -374,7 +395,7 @@ export default function TestPage() {
           {isIdle || isEnded ? (
             <button
               onClick={handleCall}
-              disabled={!phoneNumber.trim() || isCalling}
+              disabled={!phoneNumber.trim() || !callConsent || isCalling}
               className="flex h-[64px] w-[64px] items-center justify-center rounded-full bg-[#22c55e] text-white shadow-[0_8px_20px_-4px_rgba(34,197,94,0.5)] transition active:scale-95 disabled:opacity-40 disabled:shadow-none"
             >
               <PhoneIcon className="h-[28px] w-[28px]" />
@@ -407,7 +428,9 @@ export default function TestPage() {
         {(isIdle || isEnded) && (
           <p className="mt-[10px] text-center text-[12px] font-medium text-[#9ca3af]">
             {phoneNumber.trim()
-              ? "Tap to call this number"
+              ? callConsent
+                ? "Tap to request the test call"
+                : "Consent is required before calling"
               : "Enter phone number to enable call"}
           </p>
         )}

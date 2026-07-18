@@ -6,14 +6,15 @@ import { usePathname } from "next/navigation";
 const NAV = [
   { label: "My accounts", href: "/bank" },
   { label: "Pay and Transfer", href: "/transfer" },
-  { label: "Apply", href: "#" },
+  { label: "Family Guard", href: "/family-guard" },
+  { label: "Scam Safety", href: "/scam-safety" },
   { label: "Settings", href: "/settings" },
 ];
 
 /**
- * Shared Maybank2u desktop chrome. Fills the viewport (100vw x 100dvh) as a
- * flex column with no scrolling; type/spacing scale with viewport height via
- * the .mb-* clamp classes, so it stays consistent across screens.
+ * Shared shell for the fictional NusaSafe Bank hackathon prototype. The main
+ * region owns vertical scrolling so both compact banking screens and longer
+ * education pages remain usable on small viewports.
  */
 export function MaybankChrome({
   hero,
@@ -26,32 +27,40 @@ export function MaybankChrome({
 
   return (
     <div className="mb-stage flex flex-col bg-white text-[#20242c]">
-      {/* Gold band: nav + hero share one continuous background */}
-      <header className="shrink-0 bg-gradient-to-b from-[#f6bd47] to-[#efab30]">
-        <nav className="flex items-center justify-between px-[clamp(20px,4vw,64px)] pt-[clamp(14px,2.4vh,26px)]">
-          <Link
-            href="/bank"
-            className="mb-logo font-extrabold tracking-[-0.3px] text-white drop-shadow-[0_1px_1px_rgba(120,80,0,0.25)]"
-          >
-            Maybank2u
-          </Link>
+      <header className="shrink-0 bg-gradient-to-br from-[#0b3b4b] via-[#0f6670] to-[#168272] text-white">
+        <nav
+          aria-label="Primary navigation"
+          className="flex flex-col gap-[clamp(12px,2vh,18px)] px-[clamp(16px,4vw,64px)] pt-[clamp(14px,2.4vh,26px)] lg:flex-row lg:items-center lg:justify-between"
+        >
+          <div className="flex flex-wrap items-center gap-[10px]">
+            <Link
+              href="/bank"
+              className="mb-logo font-extrabold tracking-[-0.3px] text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]"
+            >
+              NusaSafe Bank
+            </Link>
+            <span className="rounded-full border border-white/30 bg-white/10 px-[10px] py-[4px] text-[10px] font-bold uppercase tracking-[0.08em] text-white/90">
+              Hackathon prototype · fictional bank
+            </span>
+          </div>
 
-          <ul className="flex items-center gap-[clamp(18px,3vw,44px)]">
+          <ul className="bank-nav -mx-[4px] flex max-w-full items-center gap-[clamp(14px,2.4vw,34px)] overflow-x-auto px-[4px] pb-[3px] lg:mx-0 lg:w-auto lg:px-0">
             {NAV.map(({ label, href }) => {
               const active = pathname === href;
               return (
-                <li key={label}>
+                <li key={label} className="shrink-0">
                   <Link
                     href={href}
                     className={`mb-nav relative pb-[6px] transition-colors ${
                       active
-                        ? "font-bold text-[#1e2129]"
-                        : "font-medium text-[#4a3c17] hover:text-[#1e2129]"
+                        ? "font-bold text-white"
+                        : "font-medium text-white/70 hover:text-white"
                     }`}
+                    aria-current={active ? "page" : undefined}
                   >
                     {label}
                     {active && (
-                      <span className="absolute inset-x-0 -bottom-[1px] h-[2.5px] rounded-full bg-[#1e2129]" />
+                      <span className="absolute inset-x-0 -bottom-[1px] h-[2.5px] rounded-full bg-[#8ff0d0]" />
                     )}
                   </Link>
                 </li>
@@ -60,11 +69,14 @@ export function MaybankChrome({
           </ul>
         </nav>
 
-        {hero && <div className="px-[clamp(20px,4vw,64px)]">{hero}</div>}
+        {hero && (
+          <div className="px-[clamp(16px,4vw,64px)] [&_h1]:!text-white [&_p]:!text-white/75">
+            {hero}
+          </div>
+        )}
       </header>
 
-      {/* Body fills the rest of the viewport; no scrolling */}
-      <main className="min-h-0 flex-1 overflow-hidden px-[clamp(16px,4vw,64px)] pb-[clamp(16px,3vh,32px)]">
+      <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-[clamp(14px,4vw,64px)] pb-[clamp(16px,3vh,32px)]">
         {children}
       </main>
     </div>

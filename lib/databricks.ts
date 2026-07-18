@@ -4,9 +4,18 @@ import {
   type Transfer,
   type SuspiciousAccount,
   type ParentalControl,
+  type TransferStatus,
   SEED_USERS,
   SEED_SUSPICIOUS,
 } from "./types";
+import type {
+  FamilyGuardApprovalRequest,
+  FamilyGuardIntelligenceFeedback,
+  FamilyGuardSettings,
+  FamilyGuardTrustedContact,
+  FamilyGuardVerificationSession,
+} from "./familyGuard/types";
+import { defaultFamilyGuardSettings } from "./familyGuard/seed";
 
 /* ────────────────────────────────────────────────────────────────────────
    Connection
@@ -33,6 +42,11 @@ export const TABLE = {
   users: `${CATALOG}.${SCHEMA}.users`,
   transfers: `${CATALOG}.${SCHEMA}.transfers`,
   suspicious: `${CATALOG}.${SCHEMA}.suspicious_accounts`,
+  familyGuardSettings: `${CATALOG}.${SCHEMA}.family_guard_settings`,
+  trustedContacts: `${CATALOG}.${SCHEMA}.family_guard_trusted_contacts`,
+  familyGuardRequests: `${CATALOG}.${SCHEMA}.family_guard_requests`,
+  verificationSessions: `${CATALOG}.${SCHEMA}.family_guard_verification_sessions`,
+  familyGuardFeedback: `${CATALOG}.${SCHEMA}.family_guard_intelligence_feedback`,
 } as const;
 
 type Row = Record<string, unknown>;
@@ -105,7 +119,7 @@ export function mapTransfer(r: Row): Transfer {
     amount: Number(r.amount),
     reference: r.reference ? String(r.reference) : "",
     paymentType: String(r.payment_type ?? ""),
-    status: String(r.status ?? ""),
+    status: String(r.status ?? "completed") as TransferStatus,
     createdAt: toIso(r.created_at),
   };
 }
@@ -189,6 +203,120 @@ export async function dbInsertTransfer(t: Transfer): Promise<void> {
   );
 }
 
+export async function dbUpsertTransfer(t: Transfer): Promise<void> {
+  await query(
+    `MERGE INTO ${TABLE.transfers} AS target
+     USING (SELECT ${sqlStr(t.id)} AS id) AS source
+     ON target.id = source.id
+     WHEN MATCHED THEN UPDATE SET
+       user_id = ${sqlStr(t.userId)}, from_account = ${sqlStr(t.fromAccount)},
+       recipient_name = ${sqlStr(t.recipientName)}, recipient_bank = ${sqlStr(t.recipientBank)},
+       account_number = ${sqlStr(t.accountNumber)}, amount = ${sqlNum(t.amount)},
+       reference = ${sqlStr(t.reference)}, payment_type = ${sqlStr(t.paymentType)},
+       status = ${sqlStr(t.status)}
+     WHEN NOT MATCHED THEN INSERT
+       (id, user_id, from_account, recipient_name, recipient_bank, account_number,
+        amount, reference, payment_type, status, created_at)
+     VALUES (${sqlStr(t.id)}, ${sqlStr(t.userId)}, ${sqlStr(t.fromAccount)},
+       ${sqlStr(t.recipientName)}, ${sqlStr(t.recipientBank)}, ${sqlStr(t.accountNumber)},
+       ${sqlNum(t.amount)}, ${sqlStr(t.reference)}, ${sqlStr(t.paymentType)},
+       ${sqlStr(t.status)}, ${sqlStr(t.createdAt)})`
+  );
+}
+
+export async function dbUpsertFamilyGuardSettings(
+  settings: FamilyGuardSettings,
+): Promise<void> {
+  await upsertPayload(
+    TABLE.familyGuardSettings,
+    "user_id",
+    settings.userId,
+    JSON.stringify(settings),
+    settings.updatedAt,
+  );
+}
+
+export async function dbUpsertTrustedContact(
+  contact: FamilyGuardTrustedContact,
+): Promise<void> {
+  await query(
+    `MERGE INTO ${TABLE.trustedContacts} AS target
+     USING (SELECT ${sqlStr(contact.id)} AS id) AS source
+     ON target.id = source.id
+     WHEN MATCHED THEN UPDATE SET owner_user_id = ${sqlStr(contact.ownerUserId)},
+       status = ${sqlStr(contact.status)}, payload = ${sqlStr(JSON.stringify(contact))},
+       updated_at = ${sqlStr(contact.revokedAt ?? contact.acceptedAt ?? contact.invitedAt)}
+     WHEN NOT MATCHED THEN INSERT (id, owner_user_id, status, payload, updated_at)
+     VALUES (${sqlStr(contact.id)}, ${sqlStr(contact.ownerUserId)}, ${sqlStr(contact.status)},
+       ${sqlStr(JSON.stringify(contact))}, ${sqlStr(contact.invitedAt)})`
+  );
+}
+
+export async function dbUpsertFamilyGuardRequest(
+  request: FamilyGuardApprovalRequest,
+): Promise<void> {
+  await query(
+    `MERGE INTO ${TABLE.familyGuardRequests} AS target
+     USING (SELECT ${sqlStr(request.id)} AS id) AS source
+     ON target.id = source.id
+     WHEN MATCHED THEN UPDATE SET owner_user_id = ${sqlStr(request.ownerUserId)},
+       status = ${sqlStr(request.status)}, expires_at = ${sqlStr(request.expiresAt)},
+       payload = ${sqlStr(JSON.stringify(request))}, updated_at = ${sqlStr(request.updatedAt)}
+     WHEN NOT MATCHED THEN INSERT (id, owner_user_id, status, expires_at, payload, updated_at)
+     VALUES (${sqlStr(request.id)}, ${sqlStr(request.ownerUserId)}, ${sqlStr(request.status)},
+       ${sqlStr(request.expiresAt)}, ${sqlStr(JSON.stringify(request))}, ${sqlStr(request.updatedAt)})`
+  );
+}
+
+export async function dbUpsertVerificationSession(
+  session: FamilyGuardVerificationSession,
+): Promise<void> {
+  await query(
+    `MERGE INTO ${TABLE.verificationSessions} AS target
+     USING (SELECT ${sqlStr(session.id)} AS id) AS source
+     ON target.id = source.id
+     WHEN MATCHED THEN UPDATE SET request_id = ${sqlStr(session.requestId)},
+       status = ${sqlStr(session.status)}, payload = ${sqlStr(JSON.stringify(session))},
+       updated_at = ${sqlStr(session.completedAt ?? session.createdAt)}
+     WHEN NOT MATCHED THEN INSERT (id, request_id, status, payload, updated_at)
+     VALUES (${sqlStr(session.id)}, ${sqlStr(session.requestId)}, ${sqlStr(session.status)},
+       ${sqlStr(JSON.stringify(session))}, ${sqlStr(session.createdAt)})`
+  );
+}
+
+export async function dbUpsertFamilyGuardFeedback(
+  feedback: FamilyGuardIntelligenceFeedback,
+): Promise<void> {
+  await query(
+    `MERGE INTO ${TABLE.familyGuardFeedback} AS target
+     USING (SELECT ${sqlStr(feedback.id)} AS id) AS source
+     ON target.id = source.id
+     WHEN MATCHED THEN UPDATE SET request_id = ${sqlStr(feedback.requestId)},
+       status = ${sqlStr(feedback.status)}, payload = ${sqlStr(JSON.stringify(feedback))},
+       updated_at = ${sqlStr(feedback.processedAt ?? feedback.createdAt)}
+     WHEN NOT MATCHED THEN INSERT (id, request_id, status, payload, updated_at)
+     VALUES (${sqlStr(feedback.id)}, ${sqlStr(feedback.requestId)}, ${sqlStr(feedback.status)},
+       ${sqlStr(JSON.stringify(feedback))}, ${sqlStr(feedback.createdAt)})`
+  );
+}
+
+async function upsertPayload(
+  table: string,
+  keyColumn: string,
+  key: string,
+  payload: string,
+  updatedAt: string,
+): Promise<void> {
+  await query(
+    `MERGE INTO ${table} AS target
+     USING (SELECT ${sqlStr(key)} AS record_key) AS source
+     ON target.${keyColumn} = source.record_key
+     WHEN MATCHED THEN UPDATE SET payload = ${sqlStr(payload)}, updated_at = ${sqlStr(updatedAt)}
+     WHEN NOT MATCHED THEN INSERT (${keyColumn}, payload, updated_at)
+     VALUES (${sqlStr(key)}, ${sqlStr(payload)}, ${sqlStr(updatedAt)})`
+  );
+}
+
 export async function dbListSuspicious(): Promise<SuspiciousAccount[]> {
   return (await query(`SELECT * FROM ${TABLE.suspicious} ORDER BY reported_at DESC`)).map(mapSuspicious);
 }
@@ -221,6 +349,16 @@ export async function dbInit(reset: boolean): Promise<void> {
         account_number STRING, amount DOUBLE, reference STRING, payment_type STRING, status STRING, created_at TIMESTAMP )`,
     `CREATE TABLE IF NOT EXISTS ${TABLE.suspicious} (
         id STRING, account_number STRING, bank STRING, name STRING, reason STRING, risk_level STRING, reported_at TIMESTAMP )`,
+    `CREATE TABLE IF NOT EXISTS ${TABLE.familyGuardSettings} (
+        user_id STRING, payload STRING, updated_at TIMESTAMP )`,
+    `CREATE TABLE IF NOT EXISTS ${TABLE.trustedContacts} (
+        id STRING, owner_user_id STRING, status STRING, payload STRING, updated_at TIMESTAMP )`,
+    `CREATE TABLE IF NOT EXISTS ${TABLE.familyGuardRequests} (
+        id STRING, owner_user_id STRING, status STRING, expires_at TIMESTAMP, payload STRING, updated_at TIMESTAMP )`,
+    `CREATE TABLE IF NOT EXISTS ${TABLE.verificationSessions} (
+        id STRING, request_id STRING, status STRING, payload STRING, updated_at TIMESTAMP )`,
+    `CREATE TABLE IF NOT EXISTS ${TABLE.familyGuardFeedback} (
+        id STRING, request_id STRING, status STRING, payload STRING, updated_at TIMESTAMP )`,
   ]);
 
   if (reset) {
@@ -228,6 +366,11 @@ export async function dbInit(reset: boolean): Promise<void> {
       `DELETE FROM ${TABLE.users}`,
       `DELETE FROM ${TABLE.transfers}`,
       `DELETE FROM ${TABLE.suspicious}`,
+      `DELETE FROM ${TABLE.familyGuardSettings}`,
+      `DELETE FROM ${TABLE.trustedContacts}`,
+      `DELETE FROM ${TABLE.familyGuardRequests}`,
+      `DELETE FROM ${TABLE.verificationSessions}`,
+      `DELETE FROM ${TABLE.familyGuardFeedback}`,
     ]);
   }
 
@@ -244,6 +387,8 @@ export async function dbInit(reset: boolean): Promise<void> {
         ${sqlNum(pc.transactionLimit)}, ${sqlNum(pc.dailyFrequencyLimit)}, ${sqlNum(pc.monthlyMaxAmount)},
         ${sqlStr(pc.smsPhone)}, ${sqlStr(JSON.stringify(u.transactions))}, current_timestamp())`
   );
+
+  await dbUpsertFamilyGuardSettings(defaultFamilyGuardSettings(u.id));
 
   // Seed suspicious accounts (idempotent MERGE keyed by id)
   const rows = SEED_SUSPICIOUS.map(

@@ -441,6 +441,32 @@ export default function TransferPage() {
     stopTranscriptPoll();
     pollRef.current = window.setInterval(async () => {
       try {
+        const res = await fetch(`/api/transcript?id=${convId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const t: TranscriptEntry[] = Array.isArray(data.transcript) ? data.transcript : [];
+        setTranscript(t);
+
+        const v = deriveVerdict(t);
+        if (v && !verdictActedRef.current) {
+          verdictActedRef.current = true;
+          stopPoll();
+          if (v === "approved") await handleApproved(t);
+          else await handleBlocked(t);
+          return;
+        }
+
+        if (data.status === "done") {
+          stopPoll();
+          // Call ended — always resolve to success/rejected. If no explicit
+          // APPROVED/BLOCKED was spoken, default to blocked (safety first).
+          if (!verdictActedRef.current) {
+            verdictActedRef.current = true;
+            const decided = deriveVerdict(t) ?? "blocked";
+            if (decided === "approved") await handleApproved(t);
+            else await handleBlocked(t);
+          }
+        }
         const response = await fetch(
           `/api/transcript?id=${encodeURIComponent(conversationId)}`,
           { cache: "no-store" },
@@ -482,6 +508,234 @@ export default function TransferPage() {
   const outcome = request ? learningOutcome(request.status) : "cancelled";
 
   return (
+    <>
+      <MaybankChrome
+        hero={
+          <div className="pt-[clamp(14px,2.4vh,24px)] pb-[clamp(36px,6.2vh,60px)]">
+            <h1 className="mb-h1 text-[#1e2129]">Pay &amp; Transfer</h1>
+            <p className="mb-sub mt-[clamp(4px,1vh,8px)] text-[#5a4a1c]">
+              {parentalEnabled
+                ? "Parental control is on — flagged transfers are verified by an AI scam-guard call before they go through."
+                : "Move money instantly with DuitNow, or schedule an interbank transfer."}
+            </p>
+          </div>
+        }
+      >
+        <div className="flex h-full flex-col pt-[clamp(14px,2.4vh,22px)]">
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-[clamp(18px,2vw,26px)]">
+            {/* ── Main column ── */}
+            <div className="min-h-0 overflow-hidden rounded-[12px] border border-[#edeff2] bg-white p-[clamp(18px,3vh,28px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)]">
+              {step === "form" && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (canContinue) setStep("review");
+                  }}
+                >
+                  <h2 className="mb-title text-[#1e2129]">Transfer details</h2>
+
+                  <Field label="From account">
+                    <Select value="savings" onChange={() => {}}>
+                      <option value="savings">
+                        {fromLabel} — RM {fmt(balance)}
+                      </option>
+                    </Select>
+                  </Field>
+
+                  <div className="grid grid-cols-2 gap-[clamp(10px,1.2vw,14px)]">
+                    <Field label="Recipient name">
+                      <Input value={recipient} onChange={setRecipient} placeholder="e.g. Jonathan Lim" />
+                    </Field>
+                    <Field label="Recipient bank">
+                      <Select value={recipientBank} onChange={setRecipientBank}>
+                        {["Maybank", "CIMB Bank", "Public Bank", "RHB Bank", "Hong Leong Bank"].map((b) => (
+                          <option key={b}>{b}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-[clamp(10px,1.2vw,14px)]">
+                    <Field label="Account number">
+                      <Input value={account} onChange={setAccount} placeholder="Account no." inputMode="numeric" />
+                    </Field>
+                    <Field label="Amount">
+                      <div className="relative">
+                        <span className="mb-body pointer-events-none absolute left-[14px] top-1/2 -translate-y-1/2 font-semibold text-[#8b9099]">
+                          RM
+                        </span>
+                        <input
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                          placeholder="0.00"
+                          inputMode="decimal"
+                          className="mb-body w-full rounded-[8px] border border-[#e2e5ea] bg-white py-[clamp(9px,1.6vh,12px)] pl-[44px] pr-[14px] font-semibold text-[#20242c] outline-none transition-colors focus:border-[#efab30]"
+                        />
+                      </div>
+                    </Field>
+                  </div>
+                  {amountNum > balance && (
+                    <p className="mb-small mt-[6px] font-medium text-[#e0393e]">
+                      Amount exceeds available balance (RM {fmt(balance)}).
+                    </p>
+                  )}
+
+                  <Field label="Recipient reference (optional)">
+                    <Input value={reference} onChange={setReference} placeholder="e.g. Dinner, Rent" />
+                  </Field>
+
+                  <Field label="Payment Type">
+                    <Select value={paymentType} onChange={setPaymentType}>
+                      {PAYMENT_TYPES.map((p) => (
+                        <option key={p}>{p}</option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <button
+                    type="submit"
+                    disabled={!canContinue}
+                    className="mb-body mt-[clamp(16px,2.6vh,20px)] w-full rounded-[8px] bg-[#efab30] py-[clamp(11px,1.9vh,13px)] font-bold text-white shadow-[0_10px_22px_-10px_rgba(239,171,48,0.95)] transition-colors hover:bg-[#e59f20] disabled:cursor-not-allowed disabled:bg-[#e7e9ed] disabled:text-[#a2a8b0] disabled:shadow-none"
+                  >
+                    Continue
+                  </button>
+                </form>
+              )}
+
+              {step === "review" && (
+                <div>
+                  <h2 className="mb-title text-[#1e2129]">Review your transfer</h2>
+                  <p className="mb-small mt-[3px] text-[#6b7280]">
+                    {parentalEnabled
+                      ? "This transfer will be AI-prechecked before it completes."
+                      : "Please confirm the details before you transfer."}
+                  </p>
+
+                  <div className="mt-[clamp(12px,2vh,16px)] rounded-[12px] bg-[#f8f9fb] p-[clamp(14px,2.4vh,18px)] text-center">
+                    <p className="mb-small text-[#6b7280]">You are transferring</p>
+                    <p className="mb-amount mt-[6px] text-[#1e2129]">RM {fmt(amountNum)}</p>
+                    <p className="mb-small mt-[8px] text-[#6b7280]">
+                      to <span className="font-semibold text-[#20242c]">{recipient}</span>
+                    </p>
+                  </div>
+
+                  <dl className="mt-[clamp(10px,1.8vh,14px)] divide-y divide-[#eef0f3]">
+                    <ReviewRow label="From" value={fromLabel} sub={account_no} />
+                    <ReviewRow label="Recipient bank" value={recipientBank} />
+                    <ReviewRow label="Account number" value={account} />
+                    <ReviewRow label="Payment Type" value={paymentType} />
+                    <ReviewRow label="Reference" value={reference || "—"} />
+                  </dl>
+
+                  <div className="mt-[clamp(14px,2.4vh,18px)] flex flex-row-reverse gap-[12px]">
+                    <button
+                      onClick={attemptTransfer}
+                      disabled={submitting}
+                      className="mb-body flex-1 rounded-[8px] bg-[#efab30] py-[clamp(11px,1.9vh,13px)] font-bold text-white shadow-[0_10px_22px_-10px_rgba(239,171,48,0.95)] transition-colors hover:bg-[#e59f20] disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {submitting ? (parentalEnabled ? "Running AI precheck…" : "Processing…") : "Confirm & Transfer"}
+                    </button>
+                    <button
+                      onClick={() => setStep("form")}
+                      disabled={submitting}
+                      className="mb-body rounded-[8px] border border-[#e2e5ea] bg-white px-[28px] py-[clamp(11px,1.9vh,13px)] font-semibold text-[#3a3f48] transition-colors hover:bg-[#f6f7f9] disabled:opacity-50"
+                    >
+                      Back
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {step === "done" && (
+                <div className="flex h-full flex-col items-center justify-center text-center">
+                  <div className="grid h-[clamp(52px,9vh,68px)] w-[clamp(52px,9vh,68px)] place-items-center rounded-full bg-[#e6f6ea]">
+                    <svg viewBox="0 0 24 24" className="h-1/2 w-1/2 text-[#22a03f]" fill="none">
+                      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <h2 className="mb-title mt-[clamp(12px,2vh,16px)] text-[#1e2129]">Transfer successful</h2>
+                  <p className="mb-body mt-[6px] text-[#6b7280]">
+                    RM {fmt(amountNum)} sent to <span className="font-semibold text-[#20242c]">{recipient}</span>.
+                  </p>
+
+                  <div className="mt-[clamp(14px,2.4vh,18px)] w-full max-w-[380px] rounded-[12px] bg-[#f8f9fb] p-[clamp(14px,2.4vh,18px)] text-left">
+                    <ReviewRow label="New balance" value={`RM ${fmt(balance)}`} />
+                    <ReviewRow label="Payment Type" value={paymentType} />
+                    <ReviewRow label="From" value={fromLabel} />
+                  </div>
+
+                  <div className="mt-[clamp(16px,2.6vh,20px)] flex gap-[12px]">
+                    <button
+                      onClick={reset}
+                      className="mb-body rounded-[8px] bg-[#efab30] px-[24px] py-[clamp(10px,1.7vh,12px)] font-bold text-white transition-colors hover:bg-[#e59f20]"
+                    >
+                      Make another transfer
+                    </button>
+                    <Link
+                      href="/bank"
+                      className="mb-body rounded-[8px] border border-[#e2e5ea] bg-white px-[24px] py-[clamp(10px,1.7vh,12px)] text-center font-semibold text-[#3a3f48] transition-colors hover:bg-[#f6f7f9]"
+                    >
+                      Back to accounts
+                    </Link>
+                  </div>
+
+                  <FeedbackBox verdict="APPROVED" recipient={recipient} amount={fmt(amountNum)} />
+                </div>
+              )}
+
+              {step === "rejected" && (
+                <div className="flex h-full flex-col items-center justify-center text-center">
+                  <div className="grid h-[clamp(52px,9vh,68px)] w-[clamp(52px,9vh,68px)] place-items-center rounded-full bg-[#fdeaea]">
+                    <svg viewBox="0 0 24 24" className="h-1/2 w-1/2 text-[#e0393e]" fill="none">
+                      <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <h2 className="mb-title mt-[clamp(12px,2vh,16px)] text-[#1e2129]">Transfer rejected</h2>
+                  <p className="mb-body mt-[6px] max-w-[440px] text-[#6b7280]">
+                    Our AI scam-guard stopped this RM {fmt(amountNum)} transfer to{" "}
+                    <span className="font-semibold text-[#20242c]">{recipient}</span>. Your balance is unchanged and no money has left your account.
+                  </p>
+
+                  {guardianPhone && (
+                    <div className="mt-[clamp(14px,2.4vh,18px)] flex w-full max-w-[440px] items-start gap-[12px] rounded-[12px] border border-[#f6e0bd] bg-[#fff7ea] p-[clamp(12px,2vh,16px)] text-left">
+                      <span className="mt-[1px] grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-[#efab30] text-white">
+                        <svg viewBox="0 0 24 24" className="h-[16px] w-[16px]" fill="none">
+                          <path d="M4 6h16v12H4zM4 7l8 6 8-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </span>
+                      <div>
+                        <p className="mb-body font-bold text-[#1e2129]">A trusted contact has been notified</p>
+                        <p className="mb-small mt-[2px] text-[#7a6a44]">
+                          We&apos;ve sent an SMS to your guardian at{" "}
+                          <span className="font-semibold text-[#5a4a1c]">{guardianPhone}</span> so a family member can help you check whether this transfer is genuine before you try again.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="mb-small mt-[clamp(12px,2vh,16px)] max-w-[440px] text-[#8b9099]">
+                    Believe this is a mistake? Please contact the Maybank Careline at{" "}
+                    <span className="font-semibold text-[#3a3f48]">1-300-88-6688</span> for assistance.
+                  </p>
+
+                  <div className="mt-[clamp(16px,2.6vh,20px)] flex gap-[12px]">
+                    <Link
+                      href="/bank"
+                      className="mb-body rounded-[8px] bg-[#1e2129] px-[24px] py-[clamp(10px,1.7vh,12px)] text-center font-bold text-white transition-colors hover:bg-[#2c303a]"
+                    >
+                      Back to accounts
+                    </Link>
+                    <button
+                      onClick={reset}
+                      className="mb-body rounded-[8px] border border-[#e2e5ea] bg-white px-[24px] py-[clamp(10px,1.7vh,12px)] font-semibold text-[#3a3f48] transition-colors hover:bg-[#f6f7f9]"
+                    >
+                      Try another transfer
+                    </button>
+                  </div>
+
+                  <FeedbackBox verdict="BLOCKED" recipient={recipient} amount={fmt(amountNum)} />
+                </div>
+              )}
     <MaybankChrome
       hero={
         <div className="pb-[clamp(22px,4vh,38px)] pt-[clamp(14px,2.4vh,24px)]">
@@ -873,6 +1127,75 @@ function LoadingState() {
       <div className="text-center">
         <span className="mx-auto block size-9 animate-spin rounded-full border-4 border-[#dbe6e4] border-t-[#0f766e]" />
         <p className="mb-small mt-3 font-semibold text-[#697579]">Loading protected-transfer settings…</p>
+      </div>
+    </div>
+  );
+}
+
+/* ── Field helpers ──────────────────────────────────────────────────────── */
+
+// Optional feedback on the call outcome — logged and used to improve the AI.
+function FeedbackBox({ verdict, recipient, amount }: { verdict: string; recipient: string; amount: string }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [sent, setSent] = useState(false);
+
+  const send = async () => {
+    if (!text.trim()) return;
+    try {
+      await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verdict, recipient, amount, feedback: text.trim() }),
+      });
+    } catch {
+      // ignore — don't block the demo
+    }
+    setSent(true);
+  };
+
+  if (sent) {
+    return (
+      <p className="mb-small mt-[clamp(12px,2vh,16px)] font-semibold text-[#22a03f]">
+        Thanks — your feedback was sent to Scam Guard AI to improve future checks.
+      </p>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mb-small mt-[clamp(12px,2vh,16px)] font-semibold text-[#8b9099] underline underline-offset-2 transition-colors hover:text-[#3a3f48]"
+      >
+        Was this decision right? Give feedback on the call (optional)
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-[clamp(12px,2vh,16px)] w-full max-w-[440px] text-left">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="e.g. This was actually my son, the AI was too strict — or, good catch, it was a scam."
+        className="mb-small w-full resize-none rounded-[10px] border border-[#e2e5ea] bg-white px-[12px] py-[10px] text-[#20242c] outline-none transition-colors placeholder:text-[#b4b9c1] focus:border-[#efab30]"
+      />
+      <div className="mt-[8px] flex justify-end gap-[10px]">
+        <button
+          onClick={() => setOpen(false)}
+          className="mb-small rounded-[8px] border border-[#e2e5ea] bg-white px-[16px] py-[8px] font-semibold text-[#3a3f48] transition-colors hover:bg-[#f6f7f9]"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={send}
+          disabled={!text.trim()}
+          className="mb-small rounded-[8px] bg-[#efab30] px-[16px] py-[8px] font-bold text-white transition-colors hover:bg-[#e59f20] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Send to AI
+        </button>
       </div>
     </div>
   );

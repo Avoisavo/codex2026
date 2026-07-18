@@ -27,8 +27,9 @@
 # local hybrid JSON database (auto-seeded at runtime)
 /data/
 
-# verification-call transcripts
+# verification-call transcripts + user feedback
 /transcript.txt
+/feedback.txt
 
 # debug
 npm-debug.log*

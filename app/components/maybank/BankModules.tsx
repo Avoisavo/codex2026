@@ -65,14 +65,15 @@ const ACTIONS: Action[] = [
     ),
   },
   {
-    label: "Top-up",
-    href: "#",
+    label: "Monthly Report",
+    href: "/report",
     tint: "bg-[#e4f6e9]",
     color: "#1f9d55",
     icon: (
       <>
-        <rect x="7" y="3" width="10" height="18" rx="2.5" stroke="currentColor" {...stroke} />
-        <path d="M12 7v6m-3-3h6" stroke="currentColor" {...stroke} />
+        <path d="M6 3h8l4 4v14H6z" stroke="currentColor" {...stroke} />
+        <path d="M14 3v4h4" stroke="currentColor" {...stroke} />
+        <path d="M9 11h2M9 14h6M9 17h4" stroke="currentColor" {...stroke} />
       </>
     ),
   },

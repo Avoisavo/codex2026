@@ -353,9 +353,15 @@ export default function TransferPage() {
         }
 
         if (data.status === "done") {
-          setCallStatus("ended");
           stopPoll();
-          saveTranscript(t, "ENDED");
+          // Call ended — always resolve to success/rejected. If no explicit
+          // APPROVED/BLOCKED was spoken, default to blocked (safety first).
+          if (!verdictActedRef.current) {
+            verdictActedRef.current = true;
+            const decided = deriveVerdict(t) ?? "blocked";
+            if (decided === "approved") await handleApproved(t);
+            else await handleBlocked(t);
+          }
         }
       } catch {
         // ignore
@@ -572,6 +578,8 @@ export default function TransferPage() {
                       Back to accounts
                     </Link>
                   </div>
+
+                  <FeedbackBox verdict="APPROVED" recipient={recipient} amount={fmt(amountNum)} />
                 </div>
               )}
 
@@ -624,6 +632,8 @@ export default function TransferPage() {
                       Try another transfer
                     </button>
                   </div>
+
+                  <FeedbackBox verdict="BLOCKED" recipient={recipient} amount={fmt(amountNum)} />
                 </div>
               )}
             </div>
@@ -872,6 +882,73 @@ function HaltModal({
 }
 
 /* ── Field helpers ──────────────────────────────────────────────────────── */
+
+// Optional feedback on the call outcome — logged and used to improve the AI.
+function FeedbackBox({ verdict, recipient, amount }: { verdict: string; recipient: string; amount: string }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [sent, setSent] = useState(false);
+
+  const send = async () => {
+    if (!text.trim()) return;
+    try {
+      await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verdict, recipient, amount, feedback: text.trim() }),
+      });
+    } catch {
+      // ignore — don't block the demo
+    }
+    setSent(true);
+  };
+
+  if (sent) {
+    return (
+      <p className="mb-small mt-[clamp(12px,2vh,16px)] font-semibold text-[#22a03f]">
+        Thanks — your feedback was sent to Scam Guard AI to improve future checks.
+      </p>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mb-small mt-[clamp(12px,2vh,16px)] font-semibold text-[#8b9099] underline underline-offset-2 transition-colors hover:text-[#3a3f48]"
+      >
+        Was this decision right? Give feedback on the call (optional)
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-[clamp(12px,2vh,16px)] w-full max-w-[440px] text-left">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="e.g. This was actually my son, the AI was too strict — or, good catch, it was a scam."
+        className="mb-small w-full resize-none rounded-[10px] border border-[#e2e5ea] bg-white px-[12px] py-[10px] text-[#20242c] outline-none transition-colors placeholder:text-[#b4b9c1] focus:border-[#efab30]"
+      />
+      <div className="mt-[8px] flex justify-end gap-[10px]">
+        <button
+          onClick={() => setOpen(false)}
+          className="mb-small rounded-[8px] border border-[#e2e5ea] bg-white px-[16px] py-[8px] font-semibold text-[#3a3f48] transition-colors hover:bg-[#f6f7f9]"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={send}
+          disabled={!text.trim()}
+          className="mb-small rounded-[8px] bg-[#efab30] px-[16px] py-[8px] font-bold text-white transition-colors hover:bg-[#e59f20] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Send to AI
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

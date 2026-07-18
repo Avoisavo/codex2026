@@ -41,3 +41,49 @@ export async function POST(request: Request) {
     );
   }
 }
+
+type CallLine = { time: string; who: string; message: string };
+type CallRecord = {
+  timestamp: string;
+  recipient: string;
+  amount: string;
+  verdict: string;
+  lines: CallLine[];
+};
+
+// GET /api/transcripts → parse transcript.txt into structured verification-call records
+export async function GET() {
+  try {
+    let raw = "";
+    try {
+      raw = await fs.readFile(FILE, "utf-8");
+    } catch {
+      return NextResponse.json({ calls: [] });
+    }
+
+    const calls: CallRecord[] = [];
+    let current: CallRecord | null = null;
+
+    for (const line of raw.split("\n")) {
+      const header = line.match(/^=====\s*(.+?)\s*\|\s*(.+?)\s*\|\s*RM\s*(.+?)\s*\|\s*(\w+)\s*=====\s*$/);
+      if (header) {
+        current = { timestamp: header[1], recipient: header[2], amount: header[3], verdict: header[4], lines: [] };
+        calls.push(current);
+        continue;
+      }
+      const entry = line.match(/^\[([\d:]+)\]\s*([^:]+):\s*(.*)$/);
+      if (entry && current) {
+        current.lines.push({ time: entry[1], who: entry[2].trim(), message: entry[3] });
+      }
+    }
+
+    // newest first
+    calls.reverse();
+    return NextResponse.json({ calls });
+  } catch (err) {
+    return NextResponse.json(
+      { calls: [], error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
+}

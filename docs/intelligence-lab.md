@@ -1,79 +1,84 @@
-# Scam Intelligence Lab — isolated hackathon simulation
+# Scam intelligence architecture
 
-The Scam Intelligence Lab is a standalone, deterministic simulation of how a bank could
-turn incoming scam reports into explainable intelligence. It lives at `/intelligence` and
-is intentionally isolated from the banking demo.
+This repository has two deliberately separate intelligence surfaces. They share evidence-governance language, but they do not share state and must not be presented as one self-learning system.
 
-## Safety boundary
+| Surface | Purpose | Persistence | Connection to money movement |
+|---|---|---|---|
+| Scam Intelligence Lab at `/intelligence` | Deterministic hackathon simulation with a visible seven-agent pipeline | `data/intelligence.json` | None. `mainFlowConnected` is always `false`; output is shadow-only and unenforced. |
+| Family Guard advisory graph | Privacy-safe lookup of prior synthetic cases and, when explicitly consented, terminal Family Guard outcomes | `data/family-guard-intelligence.json` | Advisory evidence only. The Family Guard state machine remains responsible for every hold, review, rejection, or release. |
+
+The standalone lab is implemented today as an isolated demo. The Family Guard graph is a separate live-design surface with a read-only lookup API and a reviewed feedback bridge. Running the lab does not train or update the Family Guard graph, and a Family Guard result does not enter the lab store.
+
+## Scam Intelligence Lab boundary
 
 - The lab reads and writes only `data/intelligence.json`.
-- It does not import or mutate the banking store, `data/db.json`, user balances, transfers,
-  parental controls, the suspicious-account list, or verification calls.
-- Every generated detection rule remains `shadow-only`; the number of deployed rules is
-  always zero.
-- All reports are synthetic and no external AI or network service is called.
+- It does not read or mutate `data/db.json`, balances, transfers, Family Guard requests, parental controls, the suspicious-account list, or verification calls.
+- Its API makes no LLM, provider, or other network call.
+- All reports, conversations, transaction contexts, accounts, phones, phrases, and websites are synthetic.
+- Every candidate rule has `deploymentStatus: "shadow-only"`; `deployedRules` remains zero.
+- Its Orchestrator returns education and a recommendation with `shadowOnly: true`, `enforced: false`, and `mainFlowConnected: false`.
+- Neither an agent nor the graph can approve, block, execute, or release a transfer.
 
-This boundary keeps the `/bank` → `/settings` → `/transfer` demo unchanged while still
-showing the intelligence concept during a hackathon presentation.
+This boundary keeps the bank and Family Guard flows usable while the hackathon audience can inspect how evidence might be processed.
 
-## Simulated agent pipeline
+## Seven deterministic lab agents
 
-Each report passes through seven explainable agents:
+Each queued synthetic case passes through seven ordered, explainable TypeScript stages:
 
-1. **Transaction Agent** — reviews the mock amount, recipient novelty, timing, and behavioural
-   context attached to a synthetic case.
-2. **Conversation Agent** — detects urgency, secrecy, fear, authority pressure, and
-   too-good-to-be-true language in the case narrative.
-3. **Entity Agent** — normalizes and links accounts, phone numbers, phrases, and URLs.
-4. **Graph Agent** — builds evidence-backed nodes and relationships between cases.
-5. **Scam Pattern Agent** — detects repeated scam patterns, updates confidence, and proposes any
-   shadow-only candidate rule.
-6. **Education Agent** — turns technical evidence into calm, plain-language guidance.
-7. **Orchestrator** — combines the mock findings into a non-enforced shadow recommendation.
+1. **Transaction Agent** — evaluates mock amount, velocity, usual-range, and new-beneficiary context.
+2. **Conversation Agent** — identifies urgency, secrecy, authority pressure, isolation, and pay-to-release language in a supplied synthetic excerpt.
+3. **Entity Agent** — normalizes reported accounts, phone numbers, phrases, and URLs into evidence entities.
+4. **Graph Agent** — links independent cases through repeated entities and applies evidence-governance metadata.
+5. **Scam Pattern Agent** — matches explainable scam types and proposes non-deployed shadow candidates.
+6. **Education Agent** — translates warning signs into calm, plain-language safety guidance.
+7. **Orchestrator** — combines the six preceding outputs into an advisory shadow score and recommendation.
 
-The agents are ordinary deterministic TypeScript functions. Calling them "agents" describes
-their separate responsibilities and traceable hand-offs; it does not imply an LLM is secretly
-training itself.
+Every run records the input summary, fixed decisions, supporting evidence, output summary, and timestamps for all seven stages. “Agent” means a bounded responsibility with a traceable hand-off. There is no hidden LLM and no autonomous model-weight training.
 
-Graph evidence uses careful statuses—observed, potentially suspicious, user-reported,
-corroborated, bank-verified, or cleared. The simulation may derive corroboration from repeated
-synthetic cases, but it never assigns bank-verified or cleared without a future human-review
-workflow.
+## Evidence governance
 
-## What “learning” means here
+Every governed node, relationship, pattern, and candidate includes a status, confidence, evidence sources, first and last observation times, a reason, a review date, and an expiry date.
 
-The lab learns incrementally from evidence:
+The status vocabulary is:
 
-- a first report creates observations;
-- later reports reuse entities or language and strengthen graph links;
-- repeated signals become an emerging learned pattern;
-- strong patterns produce a candidate rule with supporting evidence and confidence.
+- `observed`
+- `potentially_suspicious`
+- `user_reported`
+- `corroborated`
+- `bank_verified`
+- `cleared`
 
-No model weights are changed. In a production design, reviewed shadow rules could later be
-promoted through an approval workflow, or the same graph context could be supplied to a real
-model. Neither action happens in this simulation.
+Automatic code uses only the first four. A synthetic report begins as `user_reported`; an entity found in one processed case remains `observed`; the same normalized entity found across independent synthetic cases can become `corroborated`; a deterministic scam-type inference is `potentially_suspicious`.
 
-## Demo
+Automatic code never assigns `bank_verified` or `cleared`. Those statuses are reserved for a separate, authenticated human or bank review workflow that is not implemented by the simulator. Corroboration means that evidence recurs—it is not a fraud verdict.
 
-1. Run `npm run dev`.
-2. Open [http://localhost:3000/intelligence](http://localhost:3000/intelligence).
-3. Select **Analyze next signal** to watch one report move through all seven agents.
-4. Repeat to see shared accounts, phone numbers, and phrases form a graph cluster.
-5. Select **Run full simulation** to process the remaining queue.
-6. Inspect the learned patterns, candidate shadow rules, risk explanations, and agent trace.
-7. Select **Reset** to restore the synthetic queue.
+## What “learning” means in the lab
 
-The technical knowledge graph is paired with a simplified **Scam Link Map** that tells the
-same evidence story as a short chain of phone, website or phrase, recipient account, and
-previous reports. Its action buttons are presentation-only previews: they do not send a
-report, contact anyone, or act on a transfer.
+The lab incrementally recomputes an evidence graph:
 
-The banking demo can be used before, during, or after this sequence; lab actions do not change
-its state.
+1. The first processed report creates user-reported case evidence and observed entities.
+2. Later independent reports may repeat an account, phone, phrase, or URL.
+3. Repeated entities become corroborated links with their supporting synthetic cases.
+4. A repeatable scam sequence can become an observed or emerging pattern.
+5. A sufficiently supported pattern may produce a shadow-only candidate rule.
+6. The Orchestrator explains what the candidate would have flagged, but deploys nothing.
 
-## API
+No model weights change. Resetting the lab restores the four queued synthetic reports and clears its graph, scores, patterns, candidate rules, and traces.
 
-- `GET /api/intelligence` returns the complete lab snapshot.
-- `POST /api/intelligence` with `{ "action": "next" }` processes one queued report.
+## Lab demo and API
+
+1. Run `npm run dev` and open `http://localhost:3000/intelligence`.
+2. Select **Analyze next signal** to process one report through all seven agents.
+3. Repeat to see shared accounts, phones, and phrases form a governed cluster.
+4. Select **Run full simulation** to process the remaining queue.
+5. Inspect the evidence graph, learned patterns, shadow candidates, education, recommendation, and seven-agent trace.
+6. Select **Reset** to restore the initial synthetic queue.
+
+The API mirrors those controls:
+
+- `GET /api/intelligence` returns the isolated lab snapshot.
+- `POST /api/intelligence` with `{ "action": "next" }` processes one case.
 - `POST /api/intelligence` with `{ "action": "run_all" }` processes the remaining queue.
 - `POST /api/intelligence` with `{ "action": "reset" }` resets only the lab.
+
+For the separate Family Guard graph, privacy model, learning loop, and Quick Cash demo, see [Family Guard intelligence](./family-guard-intelligence.md).

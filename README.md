@@ -29,6 +29,9 @@ Scam Guard adds a live, human-in-the-loop verification layer at the point of no 
   verification call when parental control is on.
 - **Settings** (`/settings`) — security, notifications, and **Parental Control** (limits +
   guardian phone) that persists to the store.
+- **Scam Intelligence Lab** (`/intelligence`) — an isolated, shadow-mode simulation where seven
+  explainable agents turn synthetic reports into a knowledge graph and candidate detection rules.
+  It never changes balances, transfers, suspicious accounts, or verification calls.
 
 ## How it works
 
@@ -56,7 +59,8 @@ Scam Guard adds a live, human-in-the-loop verification layer at the point of no 
 - **OpenAI GPT-5.6** — the phone verification agent (reasoning over the live conversation)
 - **ElevenLabs** — real-time TTS and voice for the outbound call
 - **Twilio** — real-time phone calling / call routing
-- **OpenAI GPT-5.6** — knowledge indexing and continuous improvement of scam heuristics
+- **Scam Intelligence Lab** — deterministic agent simulation, knowledge-graph memory, and
+  shadow-only candidate heuristics (no model retraining or automatic deployment)
 - **Databricks** — SQL warehouse for the data pipeline (mirrored behind a fast local store)
 
 ## Data layer (hybrid store)
@@ -69,6 +73,17 @@ Reads/writes go through a hybrid store so the demo can never break:
 
 Three collections: **users** (balance, parental control, transaction history), **transfers**
 (every executed/blocked transfer), and **suspicious_accounts** (the flagged-account list).
+
+## Isolated intelligence simulation
+
+The optional `/intelligence` lab demonstrates a future scam-learning data pipeline without
+touching the main banking flow. Synthetic reports pass through Transaction, Conversation,
+Entity, Graph, Scam Pattern, Education, and Orchestrator agents. Their evidence is persisted as
+a knowledge graph in `data/intelligence.json`; learned rules and recommendations remain
+shadow-only with zero rules deployed. This is deterministic, explainable simulation—not
+autonomous model retraining.
+
+See [`docs/intelligence-lab.md`](docs/intelligence-lab.md) for the architecture and demo steps.
 
 ## Getting started
 
@@ -175,6 +190,7 @@ app/
   bank/            # My Accounts — balance, transactions, spending, carousel
   transfer/        # Pay & Transfer — pre-check, analyzing modal, verification call
   settings/        # Security, notifications, parental control
+  intelligence/    # Isolated multi-agent + knowledge-graph simulation
   components/maybank/   # Shared chrome, card modules, ad carousel
   api/
     users/         # GET/POST users, GET/PATCH /[id]
@@ -183,12 +199,14 @@ app/
     transcripts/   # POST — append a call transcript to transcript.txt
     call/          # POST — ElevenLabs + Twilio outbound call (dynamic variables)
     transcript/    # GET — live call transcript from ElevenLabs
+    intelligence/  # GET snapshot; POST next/run_all/reset (shadow mode only)
     db/init/       # POST — create/seed the hybrid store (?reset=true)
 lib/
   store.ts         # Hybrid orchestrator (JSON-first reads, best-effort DB mirror)
   jsonStore.ts     # Local JSON persistence with a write-lock
   databricks.ts    # Databricks SQL client + high-level data access
   types.ts         # Domain types + seed data
+  intelligence/    # Separate simulated agents, graph engine, and JSON store
 docs/              # Agent prompt + demo scripts
 ```
 
@@ -203,6 +221,7 @@ docs/              # Agent prompt + demo scripts
 | `/api/call` | POST | Trigger the ElevenLabs + Twilio verification call with `dynamic_variables` |
 | `/api/transcript` | GET | Live transcript for a `conversation_id` |
 | `/api/transcripts` | POST | Append a completed call transcript to `transcript.txt` |
+| `/api/intelligence` | GET/POST | Run/reset the isolated shadow intelligence simulation |
 
 ## Built with OpenAI Codex
 

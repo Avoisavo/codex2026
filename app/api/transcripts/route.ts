@@ -1,43 +1,109 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
+
+import {
+  deleteTranscript,
+  purgeExpiredTranscripts,
+  retainTranscript,
+} from "@/lib/transcriptStore";
+import {
+  boundedRetentionDays,
+  deriveRecommendation,
+  redactSensitiveText,
+  sanitizeTranscript,
+} from "@/lib/voiceSafety";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const FILE = path.join(process.cwd(), "transcript.txt");
+const NO_STORE = { "Cache-Control": "no-store" };
 
-type Entry = { role: "user" | "ai"; message: string; time: number };
-
-// POST /api/transcripts → append a verification-call transcript to transcript.txt
 export async function POST(request: Request) {
+  let body: Record<string, unknown>;
   try {
-    const body = await request.json();
-    const transcript: Entry[] = Array.isArray(body.transcript) ? body.transcript : [];
+    const value: unknown = await request.json();
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("Request body must be an object.");
+    }
+    body = value as Record<string, unknown>;
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Invalid JSON body." },
+      { status: 400, headers: NO_STORE },
+    );
+  }
 
-    const now = new Date();
-    const stamp = now.toISOString().replace("T", " ").slice(0, 19); // 2026-07-18 14:32:05
+  if (body.consent !== true) {
+    return NextResponse.json(
+      { error: "Transcript retention requires explicit consent." },
+      { status: 400, headers: NO_STORE },
+    );
+  }
 
-    const header =
-      `===== ${stamp} | ${body.recipient ?? "?"} | RM ${body.amount ?? "?"} | ` +
-      `${String(body.verdict ?? "UNKNOWN").toUpperCase()} =====`;
+  const transcript = sanitizeTranscript(body.transcript);
+  const recommendation = deriveRecommendation(transcript);
+  const amount = Number(body.amount);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return NextResponse.json(
+      { error: "A valid numeric amount is required." },
+      { status: 400, headers: NO_STORE },
+    );
+  }
 
-    const lines = transcript.map((t) => {
-      const secsTotal = Math.floor(t.time ?? 0);
-      const mm = Math.floor(secsTotal / 60);
-      const ss = (secsTotal % 60).toString().padStart(2, "0");
-      const who = t.role === "ai" ? "Scam Guard" : "Customer";
-      return `[${mm}:${ss}] ${who}: ${t.message}`;
+  try {
+    const retained = await retainTranscript({
+      approvalRequestId:
+        typeof body.approvalRequestId === "string"
+          ? body.approvalRequestId.slice(0, 120)
+          : null,
+      recipientLabel: redactSensitiveText(body.recipient).slice(0, 120),
+      amount,
+      recommendation,
+      entries: transcript,
+      retentionDays: boundedRetentionDays(body.retentionDays),
     });
 
-    const block = `${header}\n${lines.join("\n") || "(no transcript captured)"}\n\n`;
-    await fs.appendFile(FILE, block, "utf-8");
-
-    return NextResponse.json({ ok: true, file: "transcript.txt", entries: transcript.length });
-  } catch (err) {
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
+      {
+        ok: true,
+        id: retained.id,
+        entries: retained.entries.length,
+        recommendation: retained.recommendation,
+        expiresAt: retained.expiresAt,
+        redacted: true,
+        storage: "time-limited privacy store",
+      },
+      { status: 201, headers: NO_STORE },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500, headers: NO_STORE },
+    );
+  }
+}
+export async function DELETE(request: Request) {
+  const id = new URL(request.url).searchParams.get("id");
+  try {
+    if (id) {
+      const deleted = await deleteTranscript(id);
+      return NextResponse.json(
+        { ok: true, deleted },
+        { status: deleted ? 200 : 404, headers: NO_STORE },
+      );
+    }
+
+    const purged = await purgeExpiredTranscripts();
+    return NextResponse.json(
+      { ok: true, purged },
+      { headers: NO_STORE },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 500, headers: NO_STORE },
     );
   }
 }

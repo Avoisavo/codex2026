@@ -1,59 +1,107 @@
-# Demo script — trigger SUSPICIOUS + BLOCKED
+# Demo script — Quick Cash high-risk protection
 
-## 1. Set up the transfer (on /transfer, parental control ON)
+This scenario demonstrates the complete protected flow. It does **not** make the AI the final authority, and it never shares a banking OTP with the trusted contact.
+
+## 1. Configure Family Guard
+
+On `/settings`:
+
+1. Accept the account-holder consent notice.
+2. Add the account-holder phone (only needed for a real demo call).
+3. Set soft / trusted-approval / hard limits to RM500 / RM1,000 / RM10,000.
+4. Enable Family Guard.
+5. Add and accept Sarah Tan as a primary trusted contact.
+6. Turn on intelligence feedback if you want the terminal outcome to update the demo graph.
+
+Voice consent is optional when using the deterministic demo assessment.
+
+## 2. Load the suspicious scenario
+
+On `/transfer`, press Space while no field is focused, or click **Fill demo transfer**.
+
 | Field | Value |
 |---|---|
-| Recipient name | `Quick Cash Enterprise` |
-| Recipient bank | `Maybank` |
-| **Account number** | `8842 1190 3321`  ← seeded as flagged |
+| Recipient | `Quick Cash Enterprise` |
+| Bank | `Maybank` |
+| Account | `8842 1190 3321` |
 | Amount | `10000` |
-| Payment Type | `Instant Transfer (DuitNow)` |
-| Reference | `Loan release fee` |
+| Reference | `Investment deposit` |
+| Request origin | `Investment group` |
+| Context | Urgency, secrecy, and guaranteed reward/profit |
+| Notes | WhatsApp number + example investment website |
 
-Continue → Confirm & Transfer → the "AI Scam Guard analyzing…" modal runs → your phone
-rings. Answer it and follow the script below.
+Continue through review and submit the safety answers.
 
-## 2. The call (you = the customer being scammed)
+## 3. Explain what the agents found
 
-**Agent:** "Hello, is this Danial Ariff? …We've paused a transfer of RM 10,000 to Quick
-Cash Enterprise. Can I verify a few details?"
-**You:** "Yes, this is Danial. Okay, sure."
+Point out the simulated agent trace:
 
-**Agent:** "Are you trying to send RM 10,000 to Quick Cash Enterprise?"
-**You:** "Yes, that's right. I need to send it now."
+- Transaction Agent: new recipient, protected limits, and unusual amount.
+- Conversation Agent: urgency, secrecy, and guaranteed returns.
+- Entity Agent: masked account, phone, and website clues.
+- Graph Agent: the recipient is connected to two synthetic prior reports.
+- Scam Pattern Agent: investment-scam indicators.
+- Education Agent: independent verification and credential-safety advice.
+- Orchestrator: **High risk — do not proceed**.
 
-**Agent:** "What is this payment for?"
-**You:** "It's a processing fee. I got approved for a RM 50,000 loan, but they said I have
-to pay RM 10,000 first to release it."
+Then show the Scam Link Map. Emphasise that the connections are corroborated demo evidence, not proof of fraud or a bank verdict.
 
-**Agent:** "How do you know Quick Cash Enterprise — is this someone you know personally?"
-**You:** "No, I don't know them. A man called me this morning. I saw the loan advertised
-on Facebook."
+## 4A. Deterministic assessment (recommended for judging)
 
-**Agent:** "Did anyone tell you to make this transfer, or ask you to hurry or keep it
-secret?"
-**You:** "Yes — he said I must pay within the hour or I lose the loan. He also told me not
-to tell the bank, just to say it's money for family."
+Click **Continue to verification**, then **Use demo assessment**.
 
-**If the agent probes more, keep reinforcing the scam signals:**
-- "He's still on the other line waiting for me to confirm."
-- "He said the bank might try to stop it, but it's safe."
-- "I've never dealt with this company before."
+The result moves the exact frozen transfer to `awaiting_guardian`. The balance remains unchanged.
 
-**Agent (final):** something like *"…I'm going to stop this transfer to protect you.
-Final decision: BLOCKED — advance-fee loan scam, flagged recipient, customer under
-pressure."*
+## 4B. Optional safe voice call
 
-→ The app detects **BLOCKED** and shows the **Transfer rejected** page (balance
-untouched, "SMS sent to guardian", contact-bank notice).
+Click **Request verification call** only after voice consent is enabled. The screen shows a temporary safety phrase. The call must repeat it and begin with:
 
-## Why it blocks (hits every rule)
-- Recipient account is **FLAGGED** as a known suspicious account.
-- Purpose is an **advance-fee loan scam** pattern.
-- Customer **does not know** the recipient.
-- Customer is under **time pressure** and was **coached to lie** to the bank.
+> I will never ask for your password, PIN, OTP, TAC, or Secure2u approval.
 
-## For the APPROVED demo (contrast)
-Use a **normal** account (not `8842 1190 3321`), e.g. pay `Jonathan Lim`, and answer:
-"It's my share of dinner last night, I've known him for years, nobody told me to send it."
-The agent should end **Final decision: APPROVED**, and the transfer completes.
+Suggested account-holder answers:
+
+- “I joined a WhatsApp investment group.”
+- “They promised a 30% return.”
+- “They said the opportunity ends today.”
+- “They asked me not to discuss it with my family.”
+- “I have never paid this company before.”
+
+The final spoken result should be a recommendation only:
+
+> **HIGH RISK — do not transfer. Pause and verify the company independently.**
+
+The AI result still cannot release or debit the transfer.
+
+## 5. Trusted-contact review
+
+Open `/family-guard`. The account holder sees that the transfer is waiting for Sarah; Sarah’s dashboard shows only assigned protected requests.
+
+For the local demo, use transaction-bound Family Guard code `4821` unless the environment overrides it. Explain:
+
+> This is not the account holder’s bank OTP, TAC, PIN, or Secure2u approval.
+
+The high-risk screen deliberately has no one-tap release action. Choose:
+
+- **Request bank review** — held, no debit;
+- **Reject transfer** — stopped, no debit; or
+- **Report as suspicious** — stopped and added as user-reported evidence when feedback consent is on.
+
+The learning card explains urgency, secrecy, and guaranteed-return manipulation.
+
+## 6. Contrast with a releasable case
+
+Use a small amount to an unflagged recipient and answer:
+
+- someone known personally;
+- no urgency;
+- no secrecy;
+- no promised reward;
+- no device/banking access request.
+
+Use the demo assessment’s `low_risk` recommendation, then approve with the trusted-contact code. The exact amount is debited once. Reusing the same version/code fails, preventing a double debit.
+
+## Closing line
+
+> **The parent confirms the story. The AI explains the risk. The trusted contact confirms the decision.**
+
+> **Scammers exploit emotion. Scam Guard gives people back the time and clarity to think.**

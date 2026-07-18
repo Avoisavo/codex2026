@@ -133,7 +133,7 @@ export interface CreateTransferInput {
   amount: number;
   reference?: string;
   paymentType?: string;
-  status?: string;
+  status?: Transfer["status"];
 }
 
 export async function createTransfer(input: CreateTransferInput): Promise<Transfer> {

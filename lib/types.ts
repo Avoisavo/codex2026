@@ -1,4 +1,16 @@
 import { randomUUID } from "crypto";
+import { defaultFamilyGuardSettings } from "./familyGuard/seed";
+import type {
+  FamilyGuardApprovalRequest,
+  FamilyGuardAuditEvent,
+  FamilyGuardEvidenceStatus,
+  FamilyGuardIntelligenceFeedback,
+  FamilyGuardSettings,
+  FamilyGuardTrustedContact,
+  FamilyGuardVerificationSession,
+} from "./familyGuard/types";
+
+export * from "./familyGuard/types";
 
 /* ── Domain types ─────────────────────────────────────────────────────── */
 
@@ -37,9 +49,20 @@ export interface Transfer {
   amount: number;
   reference: string;
   paymentType: string;
-  status: string;
+  status: TransferStatus;
   createdAt: string;
 }
+
+export type TransferStatus =
+  | "pending_verification"
+  | "pending_guardian"
+  | "bank_review"
+  | "completed"
+  | "blocked"
+  | "rejected"
+  | "reported"
+  | "expired"
+  | "cancelled";
 
 export interface SuspiciousAccount {
   id: string;
@@ -48,14 +71,22 @@ export interface SuspiciousAccount {
   name: string;
   reason: string;
   riskLevel: string;
+  evidenceStatus?: FamilyGuardEvidenceStatus;
   reportedAt: string;
 }
 
 /** Shape of the whole local JSON database. */
 export interface DbShape {
+  schemaVersion: 2;
   users: User[];
   transfers: Transfer[];
   suspicious: SuspiciousAccount[];
+  familyGuardSettings: FamilyGuardSettings[];
+  trustedContacts: FamilyGuardTrustedContact[];
+  approvalRequests: FamilyGuardApprovalRequest[];
+  verificationSessions: FamilyGuardVerificationSession[];
+  familyGuardAudit: FamilyGuardAuditEvent[];
+  intelligenceFeedback: FamilyGuardIntelligenceFeedback[];
 }
 
 export const newId = (prefix: string): string => `${prefix}_${randomUUID().slice(0, 8)}`;
@@ -99,8 +130,15 @@ export const SEED_SUSPICIOUS: SuspiciousAccount[] = [
 /** A fresh copy of the seed database. */
 export function seedDb(): DbShape {
   return {
+    schemaVersion: 2,
     users: structuredClone(SEED_USERS),
     transfers: [],
     suspicious: structuredClone(SEED_SUSPICIOUS),
+    familyGuardSettings: [defaultFamilyGuardSettings(SEED_USERS[0].id)],
+    trustedContacts: [],
+    approvalRequests: [],
+    verificationSessions: [],
+    familyGuardAudit: [],
+    intelligenceFeedback: [],
   };
 }

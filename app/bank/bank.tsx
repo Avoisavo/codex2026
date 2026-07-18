@@ -37,11 +37,11 @@ export default function BankPage() {
         </div>
       }
     >
-      <div className="flex h-full flex-col pt-[clamp(14px,2.4vh,22px)]">
+      <div className="flex min-h-full flex-col pt-[clamp(14px,2.4vh,22px)]">
         {/* Dashboard grid */}
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)] gap-[clamp(16px,2.2vw,26px)]">
+        <div className="grid flex-1 grid-cols-1 gap-[clamp(16px,2.2vw,26px)] xl:min-h-0 xl:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)]">
           {/* ── Left column ── */}
-          <div className="flex min-h-0 flex-col gap-[clamp(12px,2vh,18px)]">
+          <div className="flex flex-col gap-[clamp(12px,2vh,18px)] xl:min-h-0">
             {/* Balance */}
             <div className="rounded-[12px] border border-[#edeff2] bg-white p-[clamp(16px,2.6vh,24px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)]">
               <div className="flex items-start justify-between">
@@ -66,19 +66,19 @@ export default function BankPage() {
           </div>
 
           {/* ── Right column ── */}
-          <div className="flex min-h-0 flex-col gap-[clamp(12px,2vh,18px)]">
+          <div className="flex flex-col gap-[clamp(12px,2vh,18px)] xl:min-h-0">
             {/* Transactions */}
-            <div className="flex min-h-0 flex-1 flex-col rounded-[12px] border border-[#edeff2] bg-white p-[clamp(16px,2.4vh,22px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)]">
-              <div className="flex items-center justify-between gap-[12px]">
+            <div className="flex min-h-[320px] flex-1 flex-col rounded-[12px] border border-[#edeff2] bg-white p-[clamp(16px,2.4vh,22px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)] xl:min-h-0">
+              <div className="flex flex-col gap-[12px] sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="mb-title text-[#1e2129]">Transactions History</h2>
-                <div className="flex gap-[clamp(8px,1vw,12px)]">
+                <div className="grid grid-cols-1 gap-[clamp(8px,1vw,12px)] sm:grid-cols-2">
                   <FilterSelect defaultValue="All transactions" options={["All transactions", "Money in", "Money out"]} />
                   <FilterSelect defaultValue="Last 90 days" options={["Last 90 days", "Last 30 days", "Last 7 days"]} />
                 </div>
               </div>
 
-              <div className="mt-[clamp(10px,1.8vh,16px)] min-h-0 flex-1 overflow-hidden">
-                <table className="w-full border-collapse text-left">
+              <div className="mt-[clamp(10px,1.8vh,16px)] min-h-0 flex-1 overflow-x-auto xl:overflow-hidden">
+                <table className="w-full min-w-[520px] border-collapse text-left xl:min-w-0">
                   <thead>
                     <tr className="border-b-2 border-[#e6e8ec]">
                       <th className="mb-small pb-[clamp(8px,1.4vh,11px)] pr-[12px] font-bold text-[#1e2129]">Date</th>
@@ -110,7 +110,7 @@ export default function BankPage() {
             <SpendingInsights />
 
             {/* Promotions carousel, below the spending section */}
-            <div className="h-[clamp(96px,13vh,132px)] shrink-0">
+            <div className="h-[clamp(132px,16vh,164px)] shrink-0 xl:h-[clamp(96px,13vh,132px)]">
               <AdCarousel />
             </div>
           </div>

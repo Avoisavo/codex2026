@@ -1,11 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 
 /* ────────────────────────────────────────────────────────────────────────
-   Quick actions — the "reachable in two taps" shortcut grid every neobank
-   (Revolut, Monzo) and Maybank2u put front and centre.
+   Quick actions — common account tasks and a direct route to scam education.
    ──────────────────────────────────────────────────────────────────────── */
 
 type Action = {
@@ -101,15 +99,14 @@ const ACTIONS: Action[] = [
     ),
   },
   {
-    label: "More",
-    href: "#",
-    tint: "bg-[#eef1f6]",
-    color: "#52606d",
+    label: "Scam Safety",
+    href: "/scam-safety",
+    tint: "bg-[#dff6ef]",
+    color: "#0f766e",
     icon: (
       <>
-        <circle cx="6" cy="12" r="1.4" fill="currentColor" />
-        <circle cx="12" cy="12" r="1.4" fill="currentColor" />
-        <circle cx="18" cy="12" r="1.4" fill="currentColor" />
+        <path d="M12 3 5 6v6c0 4 3 6.5 7 9 4-2.5 7-5 7-9V6l-7-3Z" stroke="currentColor" {...stroke} />
+        <path d="M12 8v5m0 3h.01" stroke="currentColor" {...stroke} />
       </>
     ),
   },
@@ -142,33 +139,18 @@ export function QuickActions() {
    Debit card visual — premium card mock, the hero object neobanks show.
    ──────────────────────────────────────────────────────────────────────── */
 
-const CARD_IMAGE =
-  "https://www.maybank2u.com.my/iwov-resources/images/personal/cards/visa/_0012_VISA-Infinite-OL.png";
-
 export function CardVisual() {
-  const [imgFailed, setImgFailed] = useState(false);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col rounded-[12px] border border-[#edeff2] bg-white p-[clamp(14px,2.2vh,20px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)]">
       <div className="flex items-center justify-between">
         <p className="mb-lg font-bold text-[#1e2129]">My Card</p>
-        <span className="mb-xs rounded-full bg-[#f0f2f6] px-[10px] py-[3px] font-semibold text-[#6b7280]">
-          Visa Infinite
+        <span className="mb-xs rounded-full bg-[#e5f5f0] px-[10px] py-[3px] font-semibold text-[#0f6b63]">
+          Digital debit · Demo
         </span>
       </div>
 
       <div className="mt-[clamp(8px,1.6vh,12px)] flex min-h-0 flex-1 items-center justify-center">
-        {imgFailed ? (
-          <FallbackCard />
-        ) : (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={CARD_IMAGE}
-            alt="Maybank Visa Infinite card"
-            onError={() => setImgFailed(true)}
-            className="max-h-full max-w-full object-contain drop-shadow-[0_14px_28px_-12px_rgba(20,26,58,0.5)]"
-          />
-        )}
+        <FictionalCard />
       </div>
 
       <div className="mt-[clamp(8px,1.6vh,12px)] flex items-end justify-between border-t border-[#eef0f3] pt-[clamp(8px,1.4vh,12px)]">
@@ -182,18 +164,24 @@ export function CardVisual() {
   );
 }
 
-/** Styled card shown if the remote card image can't be loaded (offline / hotlink-blocked). */
-function FallbackCard() {
+/** Code-native card art for the explicitly fictional hackathon bank. */
+function FictionalCard() {
   return (
-    <div className="relative aspect-[1.6/1] w-full max-w-[300px] overflow-hidden rounded-[14px] bg-gradient-to-br from-[#1b2340] via-[#243056] to-[#3a2c6b] p-[clamp(12px,2vh,16px)] text-white">
+    <div
+      role="img"
+      aria-label="Fictional NusaSafe Bank demo debit card"
+      className="relative aspect-[1.6/1] w-full max-w-[300px] overflow-hidden rounded-[14px] bg-gradient-to-br from-[#073b4c] via-[#0b6570] to-[#13947f] p-[clamp(12px,2vh,16px)] text-white shadow-[0_14px_28px_-12px_rgba(20,26,58,0.5)]"
+    >
       <span className="pointer-events-none absolute -right-[10%] -top-[30%] aspect-square w-[55%] rounded-full bg-white/10" />
-      <span className="pointer-events-none absolute right-[12%] top-[26%] aspect-square w-[35%] rounded-full bg-[#efab30]/25" />
+      <span className="pointer-events-none absolute right-[12%] top-[26%] aspect-square w-[35%] rounded-full bg-[#8ff0d0]/25" />
       <div className="relative flex h-full flex-col justify-between">
         <div className="flex items-center justify-between">
-          <span className="mb-small font-extrabold">Maybank</span>
-          <span className="mb-xs font-semibold text-white/70">VISA INFINITE</span>
+          <span className="mb-small font-extrabold">NusaSafe Bank</span>
+          <span className="mb-xs rounded-full border border-white/25 px-[8px] py-[2px] font-semibold text-white/80">
+            FICTIONAL DEMO
+          </span>
         </div>
-        <div className="h-[clamp(20px,3vh,28px)] w-[clamp(28px,4vh,38px)] rounded-[5px] bg-gradient-to-br from-[#f6d68a] to-[#d9a441]" />
+        <div className="h-[clamp(20px,3vh,28px)] w-[clamp(28px,4vh,38px)] rounded-[5px] bg-gradient-to-br from-[#d7fff2] to-[#78d8bd]" />
         <p className="mb-small font-semibold tracking-[3px] text-white/90">•••• •••• •••• 7348</p>
       </div>
     </div>
@@ -201,8 +189,7 @@ function FallbackCard() {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   Spending insights — the auto-categorised donut Monzo says 70% of
-   customers use. Conic-gradient ring + legend, no external assets.
+   Spending insights — code-native conic-gradient ring and legend.
    ──────────────────────────────────────────────────────────────────────── */
 
 const CATEGORIES = [
@@ -212,15 +199,18 @@ const CATEGORIES = [
   { label: "Transport", pct: 12, amount: "RM 1,114", color: "#1d6fe0" },
 ];
 
-export function SpendingInsights() {
-  // Build the conic-gradient stops from the category percentages.
-  let acc = 0;
-  const stops = CATEGORIES.map((c) => {
-    const from = acc;
-    acc += c.pct;
-    return `${c.color} ${from}% ${acc}%`;
-  }).join(", ");
+const DONUT_STOPS = CATEGORIES.reduce(
+  (result, category) => ({
+    offset: result.offset + category.pct,
+    stops: [
+      ...result.stops,
+      `${category.color} ${result.offset}% ${result.offset + category.pct}%`,
+    ],
+  }),
+  { offset: 0, stops: [] as string[] },
+).stops.join(", ");
 
+export function SpendingInsights() {
   return (
     <div className="rounded-[12px] border border-[#edeff2] bg-white p-[clamp(14px,2.2vh,20px)] shadow-[0_8px_28px_-18px_rgba(20,26,58,0.28)]">
       <div className="flex items-center justify-between">
@@ -232,7 +222,7 @@ export function SpendingInsights() {
         {/* Donut */}
         <div
           className="relative grid aspect-square h-[clamp(72px,11vh,104px)] shrink-0 place-items-center rounded-full"
-          style={{ background: `conic-gradient(${stops})` }}
+          style={{ background: `conic-gradient(${DONUT_STOPS})` }}
         >
           <div className="grid aspect-square w-[62%] place-items-center rounded-full bg-white text-center">
             <div>

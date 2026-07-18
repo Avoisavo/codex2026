@@ -304,7 +304,12 @@ export async function createFamilyGuardRequest(
       id: requestId,
       transferId,
       ownerUserId: input.userId,
-      trustedContactIds: activeContacts.map((contact) => contact.id),
+      // A trusted contact can see only transfers that actually entered the
+      // protection workflow. Normal transfers never become guardian history.
+      trustedContactIds:
+        status === "completed"
+          ? []
+          : activeContacts.map((contact) => contact.id),
       status,
       version: 1,
       bindingHash: transferBindingHash(transferSnapshot),
@@ -446,7 +451,7 @@ export async function recordFamilyGuardVerification(
     assertFamilyGuard(verification, "Verification session not found.", 409, "missing_verification");
     const settings = ensureSettings(db, request.ownerUserId);
     assertFamilyGuard(
-      settings.privacy.voiceVerificationConsent,
+      !input.providerConversationId || settings.privacy.voiceVerificationConsent,
       "The account holder must consent before a verification call result can be recorded.",
       409,
       "voice_consent_required",
